@@ -6,6 +6,26 @@ import signals from '../../signal-info.json'
 
 type MapById<T> = { [id: number]: T }
 
+/**
+ * Decode raw channel value coming from bus into user-friendly form.
+ * For analog percentage channels (dataItemFormatType=14, dataType=2), map 0..255 -> 0..100 (%).
+ */
+function decodeValue(ch: Channel, raw: number): number | boolean | string | null {
+  // Percentage mapping: many tank levels are 0..255 with dataItemFormatType=14 (%)const desc = (ch.description || '').toLowerCase()
+  const name = (ch.name || '').toLowerCase()
+  if (/volt|battery|\bv\b/.test(ch.description) || /volt|battery|\bv\b/.test(name)) {
+    const v = Math.round((raw / 10) * 10) / 10
+    return v
+  }
+  if (/temp|°|heater|heating/.test(ch.description) || /temp|°|heater|heating/.test(name)) {
+    const t = Math.round((raw / 10) * 10) / 10
+    return t
+  }
+  // Fallback: raw
+  return raw
+}
+
+
 const buildInitialChannels = (): MapById<Channel> => {
   const map: MapById<Channel> = {}
   for (const s of signals as any[]) {
@@ -21,6 +41,8 @@ const buildInitialChannels = (): MapById<Channel> => {
       dataItemFormatType: s.dataItemFormatType,
       dataType: s.dataType,
       channelSettingType: s.channelSettingType,
+      rawValue: null,
+      decodedValue: null,
       value: null,
       updatedAt: null
     }
@@ -82,12 +104,26 @@ export class EmpirBusChannelRepository implements ChannelRepository {
         const d = msg.data
         if (Array.isArray(d) && d.length >= 3) {
           const id = Number(d[0] | (d[1] << 8))
-          const raw = Number(d[2])
-          const ch = this.channels[id]
+          let raw = Number(d[2]);
+          const ch = this.channels[id];
           if (ch) {
-            ch.value = raw
-            ch.updatedAt = Date.now()
-            this.subs.forEach(fn => fn({ ...ch }))
+            // Generic MFD Status handling (messagecmd=5): valueTypeIdentifier in d[3], value Int32 LE in d[4..7]
+            if (t === 16 && Number(msg.messagecmd) === 5 && Array.isArray(d) && d.length >= 8) {
+              const flags = Number(d[2]) | 0; // Bit7 -> unavailable
+              const valueTypeIdentifier = Number(d[3]) | 0;
+              const v0 = Number(d[4] ?? 0) & 0xff;
+              const v1 = Number(d[5] ?? 0) & 0xff;
+              const v2 = Number(d[6] ?? 0) & 0xff;
+              const v3 = Number(d[7] ?? 0) & 0xff;
+              // Int32 little-endian (signed)
+              raw = (v0 | (v1 << 8) | (v2 << 16) | (v3 << 24)) | 0;
+              // Update channel's dataItemFormatType dynamically to match stream
+              if (typeof ch.dataItemFormatType === 'number') ch.dataItemFormatType = valueTypeIdentifier;
+            }ch.rawValue = raw;
+            ch.decodedValue = decodeValue(ch, raw);
+            ch.value = ch.decodedValue;
+            ch.updatedAt = Date.now();
+            this.subs.forEach(fn => fn({ ...ch }));
           }
         }
       }

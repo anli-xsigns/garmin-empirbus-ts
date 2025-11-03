@@ -40,7 +40,9 @@ const table = blessed.listtable({
     border: { fg: 'cyan' }
   },
   interactive: true,
-  align: 'left'
+  align: 'left',
+  // fixed column widths to keep alignment stable
+  columnWidth: [8, 24, 10, 10, 20]
 })
 
 screen.append(help);
@@ -50,7 +52,7 @@ screen.append(status);
 // Focus table so arrow keys & PgUp/PgDn work
 ;(table as any).focus()
 
-const headersBase = ['ID', 'Name', 'Wert', 'Zuletzt aktualisiert']
+const headersBase = ['ID', 'Name', 'Raw', 'Decoded', 'Zuletzt aktualisiert']
 function headerWithArrow(label: string, key: SortKey): string {
   const isActive = sortKey === key
   const arrow = isActive ? (sortOrder === 'asc' ? ' ▲' : ' ▼') : ''
@@ -60,7 +62,8 @@ function headersWithSort(): string[] {
   return [
     headerWithArrow('ID', 'id'),
     headerWithArrow('Name', 'name'),
-    'Wert',
+    'Raw',
+    'Decoded',
     headerWithArrow('Zuletzt aktualisiert', 'updatedAt'),
   ]
 }
@@ -76,6 +79,14 @@ table.setData([headers])
 
 
 // ---------- helpers ----------
+function buildRow(r: any): string[] {
+  const raw = (r as any).rawValue
+  const dec = (r as any).decodedValue ?? (r as any).value
+  const rawStr = (raw === null || raw === undefined) ? '—' : String(raw)
+  const decStr = (dec === null || dec === undefined) ? '—' : String(dec)
+  return [String(r.id), r.name, rawStr, decStr, fmtTime(r.updatedAt)]
+}
+
 const fmtTime = (ts: number) => {
   const diff = Math.floor((Date.now() - ts) / 1000)
   if (diff < 60) return `vor ${diff} Sekunden`
@@ -113,7 +124,7 @@ function refresh() {
   const lt = (table as any);
   const prevSelected = typeof lt.selected === 'number' ? lt.selected : null;
   const vis = getVisible();
-  const data = vis.map(r => [String(r.id), r.name, String(r.value ?? ''), fmtTime(r.updatedAt)]);
+  const data = vis.map(r => buildRow(r));
   const headers = headersWithSort();
   table.setData([headers, ...data]);
   // Restore selection only
@@ -124,6 +135,17 @@ function refresh() {
 }
 
 // ---------- keyboard ----------
+const inspector = blessed.message({ parent: screen, top: 'center', left: 'center', width: '80%', height: 'shrink', border: 'line', label: ' Details ', tags: true, keys: true, mouse: true })
+screen.key(['i'], () => {
+  const lt = (table as any)
+  const sel = Math.max(1, Math.min((lt.selected ?? 1), getVisible().length)) - 1
+  const r = getVisible()[sel]
+  if (!r) return
+  const raw = (r as any).rawValue
+  const dec = (r as any).decodedValue ?? (r as any).value
+  inspector.display(`{bold}${r.name}{/bold}\nID: ${r.id}\nRaw: ${raw ?? '—'}\nDecoded: ${dec ?? '—'}\nUpdated: ${fmtTime(r.updatedAt)}`, 0, () => {})
+})
+
 // sorting & control keys bound on screen (global)
 screen.key(['1'], () => { sortKey = 'id'; refresh() })
 screen.key(['2'], () => { sortKey = 'name'; refresh() })
