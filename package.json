@@ -9,10 +9,13 @@
     "list": "node dist/bin/list.js",
     "watch": "tsc -w -p tsconfig.json"
   },
-  "dependencies": {},
+  "dependencies": {
+    "blessed": "^0.1.81"
+  },
   "devDependencies": {
     "@types/node": "^24.10.0",
     "rimraf": "^6.1.0",
-    "typescript": "^5.6.3"
+    "typescript": "^5.6.3",
+    "@types/blessed": "^0.1.25"
   }
 }

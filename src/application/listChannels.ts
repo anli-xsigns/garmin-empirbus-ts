@@ -1,69 +1,178 @@
+import blessed from 'blessed'
 import { EmpirBusChannelRepository } from '../infrastructure/repositories/EmpirBusChannelRepository'
 
 const WS_URL = process.env.EMPIRBUS_WS || 'ws://192.168.1.1:8888/ws'
 const repo = new EmpirBusChannelRepository(WS_URL)
 
-const clamp = (s: string, n: number) => s.length > n ? s.slice(0, n) : s
-const pad = (s: string, n: number) => {
-  const x = clamp(s, n)
-  return x + ' '.repeat(Math.max(0, n - x.length))
+type SortKey = 'id' | 'name' | 'updatedAt'
+type SortOrder = 'asc' | 'desc'
+type Row = {
+  id: number
+  name: string
+  description: string
+  value: number | boolean | string | null
+  updatedAt: number
 }
 
-type Col = { key: 'id' | 'name' | 'value' | 'description', title: string, width: number }
-const cols: Col[] = [
-  { key: 'id', title: 'ID', width: 6 },
-  { key: 'name', title: 'Name', width: 28 },
-  { key: 'value', title: 'Value', width: 8 },
-  { key: 'description', title: 'Description', width: 44 }
-]
+let rows: Row[] = []
+let hasSelectedOnce = false
+let sortKey: SortKey = 'id'
+let sortOrder: SortOrder = 'asc'
+let filter: string | null = null
 
-const topLine = () => {
-  const parts = cols.map(c => '─'.repeat(c.width + 2))
-  return '┌' + parts.join('┬') + '┐'
+// ---------- UI ----------
+const screen = blessed.screen({ smartCSR: true, title: 'EmpirBus Status' })
+
+const help = blessed.box({
+  top: 0, left: 0, width: '100%', height: 3, tags: true,
+  content: '{bold}EmpirBus Status{/bold}  Pfeile/PgUp/PgDn=Scroll  / Suchen  1/2/3 Sort  a/d Richtung  s Zyklus  Esc Filter löschen  q Beenden'
+})
+
+const status = blessed.box({ bottom: 0, left: 0, width: '100%', height: 1, tags: true, content: '' })
+
+const table = blessed.listtable({
+  top: 3, left: 0, width: '100%', height: '100%-4',
+  keys: false, mouse: true, vi: false, tags: true,
+  border: { type: 'line' },
+  style: {
+    header: { fg: 'cyan', bold: true },
+    cell: { fg: 'white', selected: { inverse: true } },
+    border: { fg: 'cyan' }
+  },
+  interactive: true,
+  align: 'left'
+})
+
+screen.append(help);
+screen.append(table);
+screen.append(status);
+
+// Focus table so arrow keys & PgUp/PgDn work
+;(table as any).focus()
+
+const headersBase = ['ID', 'Name', 'Wert', 'Zuletzt aktualisiert']
+function headerWithArrow(label: string, key: SortKey): string {
+  const isActive = sortKey === key
+  const arrow = isActive ? (sortOrder === 'asc' ? ' ▲' : ' ▼') : ''
+  return label + arrow
+}
+function headersWithSort(): string[] {
+  return [
+    headerWithArrow('ID', 'id'),
+    headerWithArrow('Name', 'name'),
+    'Wert',
+    headerWithArrow('Zuletzt aktualisiert', 'updatedAt'),
+  ]
+}
+const headers = headersWithSort()
+table.setData([headers])
+// --- Key handlers bound to table to avoid double processing ---
+;(table as any).key(['up'], () => { const lt = (table as any); const cur = Math.max(1, (lt.selected ?? 1)); if (typeof lt.select === 'function') lt.select(Math.max(1, cur - 1)); screen.render() })
+;(table as any).key(['down'], () => { const lt = (table as any); const len = getVisible().length; const cur = Math.max(1, (lt.selected ?? 1)); if (typeof lt.select === 'function') lt.select(Math.min(len, cur + 1)); screen.render() })
+;(table as any).key(['pageup'], () => { const lt = (table as any); const page = Math.max(1, ((lt.height || 10) - 5)); const len = getVisible().length; const cur = Math.max(1, (lt.selected ?? 1)); const next = Math.max(1, cur - page); if (typeof lt.select === 'function') lt.select(next); screen.render() })
+;(table as any).key(['pagedown'], () => { const lt = (table as any); const page = Math.max(1, ((lt.height || 10) - 5)); const len = getVisible().length; const cur = Math.max(1, (lt.selected ?? 1)); const next = Math.min(len, cur + page); if (typeof lt.select === 'function') lt.select(next); screen.render() })
+;(table as any).key(['home'], () => { const lt = (table as any); if (typeof lt.select === 'function') lt.select(1); screen.render() })
+;(table as any).key(['end'], () => { const lt = (table as any); const len = getVisible().length; if (typeof lt.select === 'function') lt.select(Math.max(1, len)); screen.render() })
+
+
+// ---------- helpers ----------
+const fmtTime = (ts: number) => {
+  const diff = Math.floor((Date.now() - ts) / 1000)
+  if (diff < 60) return `vor ${diff} Sekunden`
+  const d = new Date(ts)
+  const hh = String(d.getHours()).padStart(2,'0')
+  const mm = String(d.getMinutes()).padStart(2,'0')
+  const ss = String(d.getSeconds()).padStart(2,'0')
+  return `${hh}:${mm}:${ss}`
 }
 
-const midLine = () => {
-  const parts = cols.map(c => '─'.repeat(c.width + 2))
-  return '├' + parts.join('┼') + '┤'
-}
+function cmp(a: any, b: any) { return a < b ? -1 : a > b ? 1 : 0 }
 
-const bottomLine = () => {
-  const parts = cols.map(c => '─'.repeat(c.width + 2))
-  return '└' + parts.join('┴') + '┘'
-}
-
-const header = () => {
-  const line = cols.map(c => ' ' + pad(c.title, c.width) + ' ').join('│')
-  return '│' + line + '│'
-}
-
-const fmtRow = (id: number, name: string, desc: string, value: any) => {
-  const idStr = pad(String(id), cols[0].width)
-  const nameStr = pad(name, cols[1].width)
-  const valRaw = value === null || typeof value === 'undefined' ? '' : String(value)
-  const valStr = pad(valRaw, cols[2].width)
-  const descStr = pad(desc, cols[3].width)
-  const line = [idStr, nameStr, valStr, descStr].map((x, i) => ' ' + x + ' ').join('│')
-  return '│' + line + '│'
-}
-
-const clearAndDrawHeader = () => {
-  process.stdout.write(topLine() + '\n')
-  process.stdout.write(header() + '\n')
-  process.stdout.write(midLine() + '\n')
-}
-
-const run = async () => {
-  await repo.connect()
-  const channels = await repo.all()
-  clearAndDrawHeader()
-  for (const c of channels) {
-    process.stdout.write(fmtRow(c.id, c.name, c.description, c.value) + '\n')
+function getVisible(): Row[] {
+  let arr = rows.slice()
+  if (filter && filter.trim()) {
+    const f = filter.toLowerCase()
+    arr = arr.filter(r =>
+      String(r.id).toLowerCase().includes(f) ||
+      r.name.toLowerCase().includes(f) ||
+      String(r.value ?? '').toLowerCase().includes(f)
+    )
   }
-  process.stdout.write(bottomLine() + '\n')
-  repo.onUpdate((c) => {
-    process.stdout.write(fmtRow(c.id, c.name, c.description, c.value) + '\n')
+  arr.sort((a, b) => {
+    let av: any; let bv: any
+    if (sortKey === 'id') { av = a.id; bv = b.id }
+    else if (sortKey === 'name') { av = a.name.toLowerCase(); bv = b.name.toLowerCase() }
+    else { av = a.updatedAt; bv = b.updatedAt }
+    const r = cmp(av, bv)
+    return sortOrder === 'asc' ? r : -r
   })
+  return arr
 }
 
-run()
+function refresh() {
+  const lt = (table as any);
+  const prevSelected = typeof lt.selected === 'number' ? lt.selected : null;
+  const vis = getVisible();
+  const data = vis.map(r => [String(r.id), r.name, String(r.value ?? ''), fmtTime(r.updatedAt)]);
+  const headers = headersWithSort();
+  table.setData([headers, ...data]);
+  // Restore selection only
+  try { if (prevSelected != null) lt.select(Math.max(1, Math.min(prevSelected, data.length))); } catch {}
+  const selRow = Math.max(1, Math.min(((table as any).selected ?? 1), data.length));
+  status.setContent(`Quelle: ws | Sort: ${sortKey} (${sortOrder})${filter ? ` | Filter="${filter}"` : ''} | Zeile: ${selRow}/${data.length}`);
+  screen.render();
+}
+
+// ---------- keyboard ----------
+// sorting & control keys bound on screen (global)
+screen.key(['1'], () => { sortKey = 'id'; refresh() })
+screen.key(['2'], () => { sortKey = 'name'; refresh() })
+screen.key(['3'], () => { sortKey = 'updatedAt'; refresh() })
+screen.key(['a'], () => { sortOrder = 'asc'; refresh() })
+screen.key(['d'], () => { sortOrder = 'desc'; refresh() })
+screen.key(['s'], () => { sortKey = sortKey === 'id' ? 'name' : sortKey === 'name' ? 'updatedAt' : 'id'; refresh() })
+screen.key(['q','C-c'], () => process.exit(0))
+
+// search prompt
+const prompt = blessed.prompt({
+  parent: screen, top: 'center', left: 'center', width: '80%', height: 'shrink',
+  label: ' Suche ', border: 'line', tags: true, keys: true, mouse: true
+})
+screen.key(['/'], () => {
+  prompt.input('Filter eingeben (leer = kein Filter):', '', (_err: any, value: string) => {
+    filter = (value ?? '').trim() || null
+    refresh()
+  })
+})
+screen.key(['escape'], () => { filter = null; refresh() })
+
+screen.key(['escape'], () => { filter = null; refresh() })
+
+// ---------- data hookup ----------
+function upsert(c: Row) {
+  const i = rows.findIndex(x => x.id === c.id)
+  if (i >= 0) rows[i] = c
+  else rows.push(c)
+}
+
+async function main() {
+  await repo.connect()
+  const initial = await repo.all()
+  rows = initial.map(c => ({ ...c })) as Row[]
+  refresh()
+
+  repo.onUpdate((c) => {
+    const row: Row = { ...(c as any) }
+    // ensure updatedAt exists
+    if (!row.updatedAt) row.updatedAt = Date.now()
+    upsert(row)
+  })
+
+  // periodic repaint to update "vor x Sekunden"
+  setInterval(refresh, 1000)
+}
+
+main().catch(err => {
+  status.setContent(`Fehler: ${err?.message ?? err}`)
+  screen.render()
+})
