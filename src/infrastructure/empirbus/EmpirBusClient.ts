@@ -1,3 +1,5 @@
+import { MessageType } from './messages'
+
 type WsFactory = (url: string) => WebSocket
 
 export class EmpirBusClient {
@@ -6,6 +8,7 @@ export class EmpirBusClient {
   private onMessageFns: Array<(msg: any) => void> = []
   private onStateFns: Array<(state: number) => void> = []
   private wsFactory: WsFactory
+  private heartbeat: any = null
 
   constructor(url: string, wsFactory?: WsFactory) {
     this.url = url
@@ -18,6 +21,11 @@ export class EmpirBusClient {
         const ws = this.wsFactory(this.url)
         this.ws = ws
         ws.onopen = () => {
+          // Start 500ms heartbeat (acknowledgement) to keep subscriptions alive
+          if (this.heartbeat) clearInterval(this.heartbeat);
+          this.heartbeat = setInterval(() => {
+            try { this.sendJson({ messagetype: MessageType.acknowledgement, messagecmd: 0, size: 1, data: [0] }); } catch {}
+          }, 500);
           this.notifyState(1)
           resolve()
         }
@@ -28,9 +36,11 @@ export class EmpirBusClient {
           } catch {}
         }
         ws.onerror = () => {
+              if (this.heartbeat) { clearInterval(this.heartbeat); this.heartbeat = null; }
           this.notifyState(3)
         }
         ws.onclose = () => {
+              if (this.heartbeat) { clearInterval(this.heartbeat); this.heartbeat = null; }
           this.notifyState(0)
         }
       } catch (err) {

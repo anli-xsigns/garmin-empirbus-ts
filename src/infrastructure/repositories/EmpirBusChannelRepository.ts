@@ -1,8 +1,10 @@
+import { getTemperatureUnit } from '../../shared/settings'
 import { EmpirBusClient } from '../empirbus/EmpirBusClient'
 import { toCamelCase } from '../../shared/case'
 import type { Channel } from '../../domain/entities/Channel'
 import type { ChannelRepository } from '../../domain/repositories/ChannelRepository'
 import signals from '../../signal-info.json'
+import { MessageType } from '../empirbus/messages'
 
 type MapById<T> = { [id: number]: T }
 
@@ -11,19 +13,31 @@ type MapById<T> = { [id: number]: T }
  * For analog percentage channels (dataItemFormatType=14, dataType=2), map 0..255 -> 0..100 (%).
  */
 function decodeValue(ch: Channel, raw: number): number | boolean | string | null {
-  // Percentage mapping: many tank levels are 0..255 with dataItemFormatType=14 (%)const desc = (ch.description || '').toLowerCase()
-  const name = (ch.name || '').toLowerCase()
-  if (/volt|battery|\bv\b/.test(ch.description) || /volt|battery|\bv\b/.test(name)) {
-    const v = Math.round((raw / 10) * 10) / 10
-    return v
+  // Generic value conversion based on dataItemFormatType (valueTypeIdentifier)
+  // DEC3 (14): values are scaled by 1000. For percent-ish channels, render with % and two decimals.
+  if (ch && typeof ch.dataItemFormatType === 'number') {
+    // Type 22: TEMPERATURE_KELVIN_DEC3 (raw is milli-Kelvin)
+    if (ch.dataItemFormatType === 22) {
+      const K = Number(raw) / 1000
+      const unit = getTemperatureUnit()
+      if (unit === 'K') return Number(K.toFixed(2))
+      const C = K - 273.15
+      if (unit === 'C') return Number(C.toFixed(2))
+      // 'F'
+      const F = C * 9/5 + 32
+      return Number(F.toFixed(2))
+    }
+
+    if (ch.dataItemFormatType === 14) {
+      const scaled = Number(raw) / 1000
+      const text = ((ch.description || ch.name || '') + '').toLowerCase()
+      const isPercent = text.includes('%') || text.includes(' value %') || text.includes('percent')
+      return isPercent ? `${scaled.toFixed(2)}%` : scaled
+    }
   }
-  if (/temp|°|heater|heating/.test(ch.description) || /temp|°|heater|heating/.test(name)) {
-    const t = Math.round((raw / 10) * 10) / 10
-    return t
-  }
-  // Fallback: raw
   return raw
 }
+
 
 
 const buildInitialChannels = (): MapById<Channel> => {
@@ -51,12 +65,32 @@ const buildInitialChannels = (): MapById<Channel> => {
 }
 
 export class EmpirBusChannelRepository implements ChannelRepository {
+
+  // Periodically refresh subscription to ensure continuous updates even if the bus drops them.
+  private __subscriptionInterval: any = null;
+
+  private __subscribeAll() {
+    try {
+      // messagecmd left at 0 for generic subscription; size/data empty to request all updates
+      this.client.sendJson({ messagetype: MessageType.subscriptionRequest, messagecmd: 0, size: 0, data: [] })
+    } catch {}
+  }
+
   private client: EmpirBusClient
   private channels: MapById<Channel>
   private subs: Array<(c: Channel) => void> = []
 
   constructor(url: string) {
+
     this.client = new EmpirBusClient(url)
+
+    this.client.onState((state) => {
+      // 1 === OPEN (WebSocket)
+      if (state === 1) {
+        this.__subscribeAll();
+      }
+    })
+
     this.channels = buildInitialChannels()
   }
 
@@ -115,9 +149,7 @@ export class EmpirBusChannelRepository implements ChannelRepository {
               const v1 = Number(d[5] ?? 0) & 0xff;
               const v2 = Number(d[6] ?? 0) & 0xff;
               const v3 = Number(d[7] ?? 0) & 0xff;
-              // Int32 little-endian (signed)
               raw = (v0 | (v1 << 8) | (v2 << 16) | (v3 << 24)) | 0;
-              // Update channel's dataItemFormatType dynamically to match stream
               if (typeof ch.dataItemFormatType === 'number') ch.dataItemFormatType = valueTypeIdentifier;
             }ch.rawValue = raw;
             ch.decodedValue = decodeValue(ch, raw);

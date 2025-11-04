@@ -135,7 +135,7 @@ function refresh() {
 }
 
 // ---------- keyboard ----------
-const inspector = blessed.message({ parent: screen, top: 'center', left: 'center', width: '80%', height: 'shrink', border: 'line', label: ' Details ', tags: true, keys: true, mouse: true })
+const inspector = blessed.message({ hidden: true, parent: screen, top: 'center', left: 'center', width: '80%', height: 'shrink', border: 'line', label: ' Details ', tags: true, keys: true, mouse: true })
 screen.key(['i'], () => {
   const lt = (table as any)
   const sel = Math.max(1, Math.min((lt.selected ?? 1), getVisible().length)) - 1
@@ -143,7 +143,7 @@ screen.key(['i'], () => {
   if (!r) return
   const raw = (r as any).rawValue
   const dec = (r as any).decodedValue ?? (r as any).value
-  inspector.display(`{bold}${r.name}{/bold}\nID: ${r.id}\nRaw: ${raw ?? '—'}\nDecoded: ${dec ?? '—'}\nUpdated: ${fmtTime(r.updatedAt)}`, 0, () => {})
+  inspector.display(`{bold}${r.name}{/bold}\nID: ${r.id}\nBeschreibung: ${r.description || '—'}\nRaw: ${raw ?? '—'}\nDecoded: ${dec ?? '—'}\nUpdated: ${fmtTime(r.updatedAt)}`, 0, () => {})
 })
 
 // sorting & control keys bound on screen (global)
