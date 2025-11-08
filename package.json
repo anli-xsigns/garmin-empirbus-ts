@@ -7,15 +7,21 @@
     "build": "tsc -p tsconfig.json",
     "start": "node dist/bin/list.js",
     "list": "node dist/bin/list.js",
-    "watch": "tsc -w -p tsconfig.json"
+    "watch": "tsc -w -p tsconfig.json",
+    "wslog": "ts-node src/bin/wslog.ts"
   },
   "dependencies": {
-    "blessed": "^0.1.81"
+    "blessed": "^0.1.81",
+    "ws": "^8.18.3",
+    "yargs": "^18.0.0"
   },
   "devDependencies": {
+    "@types/blessed": "^0.1.25",
     "@types/node": "^24.10.0",
+    "@types/ws": "^8.18.1",
+    "@types/yargs": "^17.0.34",
     "rimraf": "^6.1.0",
-    "typescript": "^5.6.3",
-    "@types/blessed": "^0.1.25"
+    "ts-node": "^10.9.2",
+    "typescript": "^5.9.3"
   }
 }

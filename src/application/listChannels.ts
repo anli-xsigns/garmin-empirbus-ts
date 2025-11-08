@@ -1,7 +1,23 @@
+/*__PATCH_HELPERS__*/
+function renderRow(r: any): string[] { return [toCell(r.id), toCell(r.name), toCell(r.description), toCell((r as any).decodedValue ?? (r as any).value), toCell(formatUpdated(r.updatedAt))]; }
 import blessed from 'blessed'
 import { EmpirBusChannelRepository } from '../infrastructure/repositories/EmpirBusChannelRepository'
 
 const WS_URL = process.env.EMPIRBUS_WS || 'ws://192.168.1.1:8888/ws'
+
+const dash = '—'
+const toCell = (v: unknown): string => (v === null || v === undefined ? dash : String(v))
+
+const formatUpdated = (ms?: number): string => {
+  if (!ms) return dash
+  const diff = Math.floor((Date.now() - ms) / 1000)
+  if (diff < 60) return `vor ${diff} Sekunden`
+  const d = new Date(ms)
+  const h = String(d.getHours()).padStart(2, '0')
+  const m = String(d.getMinutes()).padStart(2, '0')
+  const s = String(d.getSeconds()).padStart(2, '0')
+  return `${h}:${m}:${s}`
+}
 const repo = new EmpirBusChannelRepository(WS_URL)
 
 type SortKey = 'id' | 'name' | 'updatedAt'
@@ -52,7 +68,7 @@ screen.append(status);
 // Focus table so arrow keys & PgUp/PgDn work
 ;(table as any).focus()
 
-const headersBase = ['ID', 'Name', 'Raw', 'Decoded', 'Zuletzt aktualisiert']
+const headersBase = ['ID', 'Name', 'Description', 'Decoded', 'Zuletzt aktualisiert']
 function headerWithArrow(label: string, key: SortKey): string {
   const isActive = sortKey === key
   const arrow = isActive ? (sortOrder === 'asc' ? ' ▲' : ' ▼') : ''
@@ -62,13 +78,15 @@ function headersWithSort(): string[] {
   return [
     headerWithArrow('ID', 'id'),
     headerWithArrow('Name', 'name'),
-    'Raw',
+    'Description',
     'Decoded',
     headerWithArrow('Zuletzt aktualisiert', 'updatedAt'),
   ]
 }
 const headers = headersWithSort()
-table.setData([headers])
+const _rows = rows.map(renderRow)
+const _final = _rows.length ? [headers, ..._rows] : [headers, Array(headers.length).fill('—')]
+table.setData(_final)
 // --- Key handlers bound to table to avoid double processing ---
 ;(table as any).key(['up'], () => { const lt = (table as any); const cur = Math.max(1, (lt.selected ?? 1)); if (typeof lt.select === 'function') lt.select(Math.max(1, cur - 1)); screen.render() })
 ;(table as any).key(['down'], () => { const lt = (table as any); const len = getVisible().length; const cur = Math.max(1, (lt.selected ?? 1)); if (typeof lt.select === 'function') lt.select(Math.min(len, cur + 1)); screen.render() })
@@ -126,7 +144,7 @@ function refresh() {
   const vis = getVisible();
   const data = vis.map(r => buildRow(r));
   const headers = headersWithSort();
-  table.setData([headers, ...data]);
+  table.setData([headers, ...rows.map(renderRow)]);
   // Restore selection only
   try { if (prevSelected != null) lt.select(Math.max(1, Math.min(prevSelected, data.length))); } catch {}
   const selRow = Math.max(1, Math.min(((table as any).selected ?? 1), data.length));
@@ -184,7 +202,7 @@ async function main() {
   refresh()
 
   repo.onUpdate((c) => {
-    const row: Row = { ...(c as any) }
+    const row: Row = { id: (c as any).id, name: (c as any).name ?? '', description: (c as any).description ?? '', value: (c as any).decodedValue ?? (c as any).value ?? null, updatedAt: (c as any).updatedAt || Date.now() }
     // ensure updatedAt exists
     if (!row.updatedAt) row.updatedAt = Date.now()
     upsert(row)
