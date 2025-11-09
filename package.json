@@ -8,7 +8,8 @@
     "start": "node dist/bin/list.js",
     "list": "node dist/bin/list.js",
     "watch": "tsc -w -p tsconfig.json",
-    "wslog": "ts-node src/bin/wslog.ts"
+    "wslog": "ts-node src/bin/wslog.ts",
+    "wductl": "node dist/bin/wductl.js"
   },
   "dependencies": {
     "blessed": "^0.1.81",

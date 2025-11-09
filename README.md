@@ -31,3 +31,4 @@ Tasten: F=Filter, I=In, O=Out, A=All, C=Clear, S=Save, Q=Quit
 ```
 node dist/bin/wstap.js --log traffic.ndjson --ws ws://192.168.1.1:8888/ws
 ```
+$env:EMPIRBUS_LOG="1"
