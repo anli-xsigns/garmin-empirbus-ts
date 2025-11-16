@@ -1,4 +1,4 @@
-import { MessageType } from './messages'
+import { MessageType } from './MessageType'
 import * as fs from 'fs'
 import * as path from 'path'
 

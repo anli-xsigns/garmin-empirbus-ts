@@ -13,10 +13,3 @@ export const MessageType = {
   clientControlCommand: 112,
   acknowledgement: 128
 } as const
-
-export const MfdControlCmd = {
-  toggle: 0,
-  momentary: 1,
-  dimmerUpdate: 3,
-  statusUpdate: 5
-} as const

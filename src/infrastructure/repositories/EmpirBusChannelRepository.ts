@@ -4,7 +4,7 @@ import { toCamelCase } from '../../shared/case'
 import type { Channel } from '../../domain/entities/Channel'
 import type { ChannelRepository } from '../../domain/repositories/ChannelRepository'
 import signals from '../../signal-info.json'
-import { MessageType } from '../empirbus/messages'
+import { MessageType } from '../empirbus/MessageType'
 import { buildToggleCommand, buildDimmerCommand } from '../empirbus/commands'
 
 type MapById<T> = { [id: number]: T }

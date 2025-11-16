@@ -1,4 +1,4 @@
-import { MessageType } from './messages'
+import { MessageType } from './MessageType'
 
 export const buildToggleCommand = (id: number) => {
     return [
