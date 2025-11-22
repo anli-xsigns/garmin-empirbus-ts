@@ -5,7 +5,6 @@ import * as path from 'path'
 type WsFactory = (url: string) => WebSocket
 
 export class EmpirBusClient {
-    // Logging config (env or programmatic)
     static loggingEnabled: boolean = (process.env.EMPIRBUS_LOG === '1' || !!process.env.EMPIRBUS_LOG_FILE)
     static logFile: string = process.env.EMPIRBUS_LOG_FILE || 'logs\\empirbus.ndjson'
 
@@ -15,12 +14,12 @@ export class EmpirBusClient {
     }
 
     private ws: WebSocket | null = null
-    private url: string
+    private readonly url: string
     private onMessageFns: Array<(msg: any) => void> = []
     private onStateFns: Array<(state: number) => void> = []
-    private wsFactory: WsFactory
+    private readonly wsFactory: WsFactory
     private heartbeat: any = null
-    private logStream: fs.WriteStream | null = null
+    private readonly logStream: fs.WriteStream | null = null
 
     constructor(url: string, wsFactory?: WsFactory) {
         this.url = url
@@ -45,7 +44,6 @@ export class EmpirBusClient {
                 this.ws = ws
                 ws.onopen = () => {
                     this.writeLog({ ts: new Date().toISOString(), dir: 'out', raw: '[connected]' })
-                    // Start 500ms heartbeat (acknowledgement) to keep subscriptions alive
                     if (this.heartbeat)
                         clearInterval(this.heartbeat)
                     this.heartbeat = setInterval(() => {
@@ -123,14 +121,17 @@ export class EmpirBusClient {
     }
 
     close() {
-        if (this.ws && this.ws.readyState === this.ws.OPEN) this.ws.close()
+        if (this.ws && this.ws.readyState === this.ws.OPEN)
+            this.ws.close()
     }
 
     private writeLog(obj: any) {
-        if (!EmpirBusClient.loggingEnabled) return
+        if (!EmpirBusClient.loggingEnabled)
+            return
         try {
             const line = JSON.stringify(obj) + '\n'
-            if (this.logStream) this.logStream.write(line)
+            if (this.logStream)
+                this.logStream.write(line)
             else fs.appendFileSync(EmpirBusClient.logFile, line, 'utf8')
         }
         catch {

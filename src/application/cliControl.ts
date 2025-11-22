@@ -1,5 +1,5 @@
 
-import { EmpirBusChannelRepository } from '../infrastructure/repositories/EmpirBusChannelRepository'
+import { EmpirBusChannelRepository } from '../infrastructure/repositories/EmpirBus/EmpirBusChannelRepository'
 import { toCamelCase } from '../shared/case'
 
 export type Action = 'on' | 'off' | 'toggle' | 'dim'

@@ -1,6 +1,6 @@
-import type { Channel } from '../entities/Channel'
+import type { Channel } from '../domain/Channel'
 
-export interface ChannelRepository {
+export interface IChannelRepository {
   all(): Promise<Channel[]>
   onUpdate(fn: (c: Channel) => void): void
   connect(): Promise<void>

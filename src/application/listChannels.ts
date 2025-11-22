@@ -1,5 +1,5 @@
 import blessed from 'blessed'
-import { EmpirBusChannelRepository } from '../infrastructure/repositories/EmpirBusChannelRepository'
+import { EmpirBusChannelRepository } from '../infrastructure/repositories/EmpirBus/EmpirBusChannelRepository'
 
 const WS_URL = process.env.EMPIRBUS_WS || 'ws://192.168.1.1:8888/ws'
 
