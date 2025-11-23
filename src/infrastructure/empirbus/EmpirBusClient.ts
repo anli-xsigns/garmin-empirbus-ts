@@ -1,80 +1,46 @@
+import { LogLine } from './helpers'
 import { MessageType } from './MessageType'
 import * as fs from 'fs'
 import * as path from 'path'
 
-type WsFactory = (url: string) => WebSocket
-
 export class EmpirBusClient {
     static loggingEnabled: boolean = (process.env.EMPIRBUS_LOG === '1' || !!process.env.EMPIRBUS_LOG_FILE)
     static logFile: string = process.env.EMPIRBUS_LOG_FILE || 'logs\\empirbus.ndjson'
-
-    static configureLogging(opts: { enabled?: boolean; file?: string } = {}) {
-        if (typeof opts.enabled === 'boolean') EmpirBusClient.loggingEnabled = opts.enabled
-        if (typeof opts.file === 'string' && opts.file.trim()) EmpirBusClient.logFile = opts.file
-    }
-
-    private ws: WebSocket | null = null
-    private readonly url: string
+    private heartbeat: any = null
     private onMessageFns: Array<(msg: any) => void> = []
     private onStateFns: Array<(state: number) => void> = []
-    private readonly wsFactory: WsFactory
-    private heartbeat: any = null
-    private readonly logStream: fs.WriteStream | null = null
+    private ws: WebSocket | null = null
+    private logStream: fs.WriteStream | null = null
+    private readonly url: string
 
-    constructor(url: string, wsFactory?: WsFactory) {
+    constructor(url: string, enableLogging?: boolean) {
         this.url = url
-        this.wsFactory = wsFactory || ((u: string) => new WebSocket(u))
-        if (EmpirBusClient.loggingEnabled) {
-            try {
-                const dir = path.dirname(EmpirBusClient.logFile)
-                if (dir && dir !== '.' && !fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true })
-                this.logStream = fs.createWriteStream(EmpirBusClient.logFile, { flags: 'a' })
-            }
-            catch {
-            }
-        }
-        this.url = url
-        this.wsFactory = wsFactory || ((u: string) => new WebSocket(u))
+        EmpirBusClient.configureLogging({ enabled: enableLogging })
+        this.setupLogging()
     }
 
     connect() {
         return new Promise<void>((resolve, reject) => {
             try {
-                const ws = this.wsFactory(this.url)
+                const ws = new WebSocket(this.url)
                 this.ws = ws
                 ws.onopen = () => {
-                    this.writeLog({ ts: new Date().toISOString(), dir: 'out', raw: '[connected]' })
+                    this.writeLog(new LogLine('out', '[connected]'))
                     if (this.heartbeat)
                         clearInterval(this.heartbeat)
                     this.heartbeat = setInterval(() => {
-                        try {
-                            this.sendJson({ messagetype: MessageType.acknowledgement, messagecmd: 0, size: 1, data: [0] })
-                        }
-                        catch {
-                        }
+                        this.sendJson({ messagetype: MessageType.acknowledgement, messagecmd: 0, size: 1, data: [0] })
                     }, 4 * 1000)
                     this.notifyState(1)
                     resolve()
                 }
                 ws.onmessage = e => {
-                    try {
-                        this.writeLog({ ts: new Date().toISOString(), dir: 'in', raw: (e as MessageEvent).data as string })
-                    }
-                    catch {
-                    }
-                    try {
-                        const data = JSON.parse((e as MessageEvent).data as string)
-                        this.onMessageFns.forEach(fn => fn(data))
-                    }
-                    catch {
-                    }
+                    this.writeLog(new LogLine('in', (e as MessageEvent).data as string))
+                    const data = JSON.parse((e as MessageEvent).data as string)
+                    this.onMessageFns.forEach(fn => fn(data))
                 }
                 ws.onerror = (err: any) => {
-                    try {
-                        this.writeLog({ ts: new Date().toISOString(), dir: 'out', raw: `[error] ${err?.message || 'ws error'}` })
-                    }
-                    catch {
-                    }
+                    this.writeLog(new LogLine('out', `[error] ${err?.message || 'ws error'}`))
                     if (this.heartbeat) {
                         clearInterval(this.heartbeat)
                         this.heartbeat = null
@@ -82,11 +48,7 @@ export class EmpirBusClient {
                     this.notifyState(3)
                 }
                 ws.onclose = () => {
-                    try {
-                        this.writeLog({ ts: new Date().toISOString(), dir: 'out', raw: '[closed]' })
-                    }
-                    catch {
-                    }
+                    this.writeLog(new LogLine('out', '[closed]'))
                     if (this.heartbeat) {
                         clearInterval(this.heartbeat)
                         this.heartbeat = null
@@ -105,11 +67,7 @@ export class EmpirBusClient {
             return
         const payload = JSON.stringify(data)
         this.ws.send(payload)
-        try {
-            this.writeLog({ ts: new Date().toISOString(), dir: 'out', raw: payload })
-        }
-        catch {
-        }
+        this.writeLog(new LogLine('out', payload))
     }
 
     onMessage(fn: (msg: any) => void) {
@@ -125,11 +83,27 @@ export class EmpirBusClient {
             this.ws.close()
     }
 
-    private writeLog(obj: any) {
+    static configureLogging(opts: { enabled?: boolean; file?: string } = {}) {
+        if (typeof opts.enabled === 'boolean')
+            EmpirBusClient.loggingEnabled = opts.enabled
+        if (typeof opts.file === 'string' && opts.file.trim())
+            EmpirBusClient.logFile = opts.file
+    }
+
+    private setupLogging(): void {
+        if (!EmpirBusClient.loggingEnabled)
+            return
+        const dir = path.dirname(EmpirBusClient.logFile)
+        if (dir && dir !== '.' && !fs.existsSync(dir))
+            fs.mkdirSync(dir, { recursive: true })
+        this.logStream = fs.createWriteStream(EmpirBusClient.logFile, { flags: 'a' })
+    }
+
+    private writeLog(logLine: LogLine) {
         if (!EmpirBusClient.loggingEnabled)
             return
         try {
-            const line = JSON.stringify(obj) + '\n'
+            const line = JSON.stringify(logLine) + '\n'
             if (this.logStream)
                 this.logStream.write(line)
             else fs.appendFileSync(EmpirBusClient.logFile, line, 'utf8')

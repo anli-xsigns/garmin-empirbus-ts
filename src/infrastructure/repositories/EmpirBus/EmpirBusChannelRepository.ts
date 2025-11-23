@@ -2,10 +2,8 @@ import { sleep } from '../../../shared/sleep'
 import { EmpirBusClient } from '../../empirbus/EmpirBusClient'
 import type { Channel } from '../../../domain/Channel'
 import type { IChannelRepository } from '../../../application/IChannelRepository'
-import { buildInitialChannels } from './helpers/buildInitialChannels'
-import { decodeValue } from './helpers/decodeValue'
+import { buildInitialChannels, decodeValue, MapById } from './helpers'
 import { MessageType } from '../../empirbus/MessageType'
-import { MapById } from './helpers/MapById'
 
 export class EmpirBusChannelRepository implements IChannelRepository {
 
@@ -56,17 +54,6 @@ export class EmpirBusChannelRepository implements IChannelRepository {
         }
     }
 
-    async toggle(id: number): Promise<void> {
-        this.client.sendJson({ messagetype: MessageType.mfdControl, messagecmd: 1, size: 3, data: [id & 255, id >> 8, 1] })
-        await sleep(100)
-        this.client.sendJson({ messagetype: MessageType.mfdControl, messagecmd: 1, size: 3, data: [id & 255, id >> 8, 0] })
-    }
-
-    dim(id: number, level: number): void {
-        const bounded = Math.max(0, Math.round(level))
-        this.client.sendJson({ messagetype: MessageType.mfdControl, messagecmd: 3, size: 5, data: [id & 255, id >> 8, 0, bounded & 255, (bounded >> 8) & 255] })
-    }
-
     async connect() {
         await this.client.connect()
         this.client.onMessage(m => this.onMessage(m))
@@ -79,6 +66,17 @@ export class EmpirBusChannelRepository implements IChannelRepository {
         this.client.sendJson(subscription)
         const n2kAll = { messagetype: MessageType.subscriptionRequest, messagecmd: 1, size: 2, data: [0, 0] }
         this.client.sendJson(n2kAll)
+    }
+
+    async toggle(id: number): Promise<void> {
+        this.client.sendJson({ messagetype: MessageType.mfdControl, messagecmd: 1, size: 3, data: [id & 255, id >> 8, 1] })
+        await sleep(100)
+        this.client.sendJson({ messagetype: MessageType.mfdControl, messagecmd: 1, size: 3, data: [id & 255, id >> 8, 0] })
+    }
+
+    dim(id: number, level: number): void {
+        const bounded = Math.max(0, Math.round(level))
+        this.client.sendJson({ messagetype: MessageType.mfdControl, messagecmd: 3, size: 5, data: [id & 255, id >> 8, 0, bounded & 255, (bounded >> 8) & 255] })
     }
 
     private onMessage(msg: any) {
