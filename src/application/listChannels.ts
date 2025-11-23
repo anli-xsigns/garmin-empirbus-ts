@@ -104,7 +104,7 @@ const refresh = () => {
 
 async function main() {
     await repo.connect()
-    const initial = await repo.all()
+    const initial = await repo.getChannelList()
     rows = initial.map(c => ({
         id: (c as any).id,
         name: (c as any).name ?? '',

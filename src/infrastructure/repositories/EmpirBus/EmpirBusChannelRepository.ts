@@ -1,22 +1,12 @@
+import type { IChannelRepository } from '../../../application/IChannelRepository'
+import type { Channel } from '../../../domain/Channel'
 import { sleep } from '../../../shared/sleep'
 import { EmpirBusClient } from '../../empirbus/EmpirBusClient'
-import type { Channel } from '../../../domain/Channel'
-import type { IChannelRepository } from '../../../application/IChannelRepository'
-import { buildInitialChannels, decodeValue, MapById } from './helpers'
+import { EmpirBusClientState } from '../../empirbus/EmpirBusClientState'
 import { MessageType } from '../../empirbus/MessageType'
+import { buildInitialChannels, decodeValue, MapById } from './helpers'
 
 export class EmpirBusChannelRepository implements IChannelRepository {
-
-    private __subscriptionInterval: any = null
-
-    private __subscribeAll() {
-        try {
-            // messagecmd left at 0 for generic subscription; size/data empty to request all updates
-            this.client.sendJson({ messagetype: MessageType.subscriptionRequest, messagecmd: 0, size: 0, data: [] })
-        }
-        catch {
-        }
-    }
 
     private client: EmpirBusClient
     private readonly channels: MapById<Channel>
@@ -26,16 +16,23 @@ export class EmpirBusChannelRepository implements IChannelRepository {
 
         this.client = new EmpirBusClient(url)
         this.client.onState((state) => {
-            // 1 === OPEN (WebSocket)
-            if (state === 1) {
-                this.__subscribeAll()
+            if (state === EmpirBusClientState.Connected) {
+                this.subscribeAllUpdates()
             }
         })
 
         this.channels = buildInitialChannels()
     }
 
-    all(): Promise<Channel[]> {
+    private subscribeAllUpdates() {
+        try {
+            this.client.sendJson({ messagetype: MessageType.subscriptionRequest, messagecmd: 0, size: 0, data: [] })
+        }
+        catch {
+        }
+    }
+
+    getChannelList(): Promise<Channel[]> {
         const list = Object.values(this.channels)
         list.sort((a, b) => a.id - b.id)
         return Promise.resolve(list)
@@ -43,15 +40,6 @@ export class EmpirBusChannelRepository implements IChannelRepository {
 
     onUpdate(fn: (c: Channel) => void): void {
         this.subs.push(fn)
-    }
-
-    close(): void {
-        try {
-            if (this.__subscriptionInterval)
-                clearInterval(this.__subscriptionInterval)
-        }
-        catch {
-        }
     }
 
     async connect() {

@@ -50,6 +50,4 @@ export const runControl = async (ws: string, target: string, action: Action, val
   else if (action === 'toggle') {
     await repo.toggle(resolved.id)
   }
-
-  setTimeout(() => repo.close(), 100)
 }

@@ -1,14 +1,15 @@
-import { LogLine } from './helpers'
-import { MessageType } from './MessageType'
 import * as fs from 'fs'
 import * as path from 'path'
+import { EmpirBusClientState } from './EmpirBusClientState'
+import { LogLine } from './helpers'
+import { MessageType } from './MessageType'
 
 export class EmpirBusClient {
     static loggingEnabled: boolean = (process.env.EMPIRBUS_LOG === '1' || !!process.env.EMPIRBUS_LOG_FILE)
     static logFile: string = process.env.EMPIRBUS_LOG_FILE || 'logs\\empirbus.ndjson'
     private heartbeat: any = null
     private onMessageFns: Array<(msg: any) => void> = []
-    private onStateFns: Array<(state: number) => void> = []
+    private onStateFns: Array<(state: EmpirBusClientState) => void> = []
     private ws: WebSocket | null = null
     private logStream: fs.WriteStream | null = null
     private readonly url: string
@@ -31,7 +32,7 @@ export class EmpirBusClient {
                     this.heartbeat = setInterval(() => {
                         this.sendJson({ messagetype: MessageType.acknowledgement, messagecmd: 0, size: 1, data: [0] })
                     }, 4 * 1000)
-                    this.notifyState(1)
+                    this.notifyState(EmpirBusClientState.Connected)
                     resolve()
                 }
                 ws.onmessage = e => {
@@ -45,7 +46,7 @@ export class EmpirBusClient {
                         clearInterval(this.heartbeat)
                         this.heartbeat = null
                     }
-                    this.notifyState(3)
+                    this.notifyState(EmpirBusClientState.Error)
                 }
                 ws.onclose = () => {
                     this.writeLog(new LogLine('out', '[closed]'))
@@ -53,7 +54,7 @@ export class EmpirBusClient {
                         clearInterval(this.heartbeat)
                         this.heartbeat = null
                     }
-                    this.notifyState(0)
+                    this.notifyState(EmpirBusClientState.Closed)
                 }
             }
             catch (err) {
@@ -74,7 +75,7 @@ export class EmpirBusClient {
         this.onMessageFns.push(fn)
     }
 
-    onState(fn: (state: number) => void) {
+    onState(fn: (state: EmpirBusClientState) => void) {
         this.onStateFns.push(fn)
     }
 
@@ -112,7 +113,7 @@ export class EmpirBusClient {
         }
     }
 
-    private notifyState(state: number) {
+    private notifyState(state: EmpirBusClientState) {
         this.onStateFns.forEach(fn => fn(state))
     }
 }
