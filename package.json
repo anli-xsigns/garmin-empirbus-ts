@@ -1,10 +1,21 @@
 {
   "name": "garmin-empirbus-ts",
-  "version": "0.1.0",
-  "private": true,
+  "version": "0.1.9",
+  "license": "MIT",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "default": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    }
+  },
+  "files": [
+    "dist"
+  ],
   "scripts": {
     "clean": "rimraf dist",
-    "build": "tsc -p tsconfig.json",
+    "build": "tsc -p tsconfig.json && yarn pack",
     "start": "node dist/bin/list.js",
     "list": "node dist/bin/list.js",
     "watch": "tsc -w -p tsconfig.json",

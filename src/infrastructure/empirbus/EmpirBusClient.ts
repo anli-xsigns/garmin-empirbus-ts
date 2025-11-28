@@ -27,11 +27,8 @@ export class EmpirBusClient {
                 this.ws = ws
                 ws.onopen = () => {
                     this.writeLog(new LogLine('out', '[connected]'))
-                    if (this.heartbeat)
-                        clearInterval(this.heartbeat)
-                    this.heartbeat = setInterval(() => {
-                        this.sendJson({ messagetype: MessageType.acknowledgement, messagecmd: 0, size: 1, data: [0] })
-                    }, 4 * 1000)
+                    this.stopSendingHeartbeat()
+                    this.sendHeartbeatRegularly()
                     this.notifyState(EmpirBusClientState.Connected)
                     resolve()
                 }
@@ -42,18 +39,12 @@ export class EmpirBusClient {
                 }
                 ws.onerror = (err: any) => {
                     this.writeLog(new LogLine('out', `[error] ${err?.message || 'ws error'}`))
-                    if (this.heartbeat) {
-                        clearInterval(this.heartbeat)
-                        this.heartbeat = null
-                    }
+                    this.stopSendingHeartbeat()
                     this.notifyState(EmpirBusClientState.Error)
                 }
                 ws.onclose = () => {
                     this.writeLog(new LogLine('out', '[closed]'))
-                    if (this.heartbeat) {
-                        clearInterval(this.heartbeat)
-                        this.heartbeat = null
-                    }
+                    this.stopSendingHeartbeat()
                     this.notifyState(EmpirBusClientState.Closed)
                 }
             }
@@ -61,6 +52,19 @@ export class EmpirBusClient {
                 reject(err)
             }
         })
+    }
+
+    private stopSendingHeartbeat() {
+        if (this.heartbeat) {
+            clearInterval(this.heartbeat)
+            this.heartbeat = null
+        }
+    }
+
+    private sendHeartbeatRegularly() {
+        this.heartbeat = setInterval(() => {
+            this.sendJson({ messagetype: MessageType.acknowledgement, messagecmd: 0, size: 1, data: [0] })
+        }, 4 * 1000)
     }
 
     sendJson(data: any) {
