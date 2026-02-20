@@ -21,6 +21,7 @@ export class EmpirBusClient {
     }
 
     connect() {
+        this.notifyState(EmpirBusClientState.Connecting)
         return new Promise<void>((resolve, reject) => {
             try {
                 const ws = new WebSocket(this.url)
