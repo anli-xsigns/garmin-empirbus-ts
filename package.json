@@ -15,7 +15,7 @@
   ],
   "scripts": {
     "clean": "rimraf dist",
-    "build": "tsc && yarn pack",
+    "build": "rimraf dist && tsc && yarn pack",
     "start": "node dist/bin/list.js",
     "list": "node dist/bin/list.js",
     "watch": "tsc -w",

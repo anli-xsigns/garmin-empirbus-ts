@@ -6,4 +6,16 @@ export class LogLine {
     ) {
         this.ts = ts || new Date().toISOString()
     }
+
+    toJSON() {
+        return {
+            dir: this.dir,
+            raw: this.raw,
+            ts: this.ts
+        }
+    }
+
+    toString() {
+        return `${this.ts} ${this.dir} ${this.raw}`
+    }
 }
