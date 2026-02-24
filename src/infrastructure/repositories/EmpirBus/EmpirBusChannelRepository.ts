@@ -76,7 +76,7 @@ export class EmpirBusChannelRepository implements IChannelRepository {
         this.client.sendJson(n2kAll)
     }
 
-    async disconnect() {
+    disconnect() {
         this.client.close()
     }
 
