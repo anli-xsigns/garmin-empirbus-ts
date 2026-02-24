@@ -86,8 +86,26 @@ export class EmpirBusClient {
     }
 
     close() {
-        if (this.ws && this.ws.readyState === this.ws.OPEN)
-            this.ws.close()
+        const ws = this.ws
+        this.ws = null
+
+        this.stopSendingHeartbeat()
+
+        if (!ws)
+            return
+
+        try {
+            ws.removeAllListeners()
+        } catch {
+        }
+
+        if (ws.readyState === WebSocket.CLOSED)
+            return
+
+        if (ws.readyState === WebSocket.CONNECTING)
+            ws.terminate()
+        else
+            ws.close()
     }
 
     static configureLogging(opts: { enabled?: boolean; file?: string } = {}) {
