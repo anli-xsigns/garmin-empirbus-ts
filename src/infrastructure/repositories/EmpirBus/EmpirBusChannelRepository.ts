@@ -16,18 +16,20 @@ export class EmpirBusChannelRepository implements IChannelRepository {
     private readonly channels: MapById<Channel>
     private subscribers: Array<(c: Channel) => void> = []
     private onStateFns: Array<(state: EmpirBusClientState) => void> = []
+    private onLogFns: Array<(line: unknown) => void> = []
 
     constructor(url: string) {
 
+        this.channels = buildInitialChannels()
+
         this.client = new EmpirBusClient(url)
+        this.client.onLog(line => this.notifyLog(line))
         this.client.onState((state) => {
             if (state === EmpirBusClientState.Connected) {
                 this.subscribeAllUpdates()
             }
             this.notifyState(state)
         })
-
-        this.channels = buildInitialChannels()
     }
 
     private subscribeAllUpdates() {
@@ -56,6 +58,14 @@ export class EmpirBusChannelRepository implements IChannelRepository {
         this.onStateFns.forEach(fn => fn(state))
     }
 
+    onLog(fn: (line: unknown) => void) {
+        this.onLogFns.push(fn)
+    }
+
+    private notifyLog(line: unknown) {
+        this.onLogFns.forEach(fn => fn(line))
+    }
+
     async connect() {
         await this.client.connect()
         this.client.onMessage(m => this.updateChannelFromMessage(m))
@@ -64,6 +74,10 @@ export class EmpirBusChannelRepository implements IChannelRepository {
 
         const n2kAll = { messagetype: MessageType.subscriptionRequest, messagecmd: 1, size: 2, data: [0, 0] }
         this.client.sendJson(n2kAll)
+    }
+
+    async disconnect() {
+        this.client.close()
     }
 
     private subscribeToAllChannels() {

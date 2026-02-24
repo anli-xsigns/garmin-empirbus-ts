@@ -6,7 +6,7 @@ import { runControl } from '../application/cliControl'
 const argv = yargs(hideBin(process.argv))
   .scriptName('wductl')
   .usage('$0 [--ws ws://host:port/ws] <target> <action> [value]')
-  .option('ws', { type: 'string', default: process.env.EMPIRBUS_WS || 'ws://192.168.1.1:8888/ws', describe: 'WebSocket URL' })
+  .option('ws', { type: 'string', default: process.env.EMPIRBUS_WS || 'ws://172.16.11.7:8888/ws', describe: 'WebSocket URL' })
   .command('$0 <target> <action> [value]', 'Kanal steuern', y => {
     return y
       .positional('target', { type: 'string', describe: 'Kanal-ID oder Name' })

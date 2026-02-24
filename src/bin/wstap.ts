@@ -7,7 +7,7 @@ import * as fs from 'fs'
 const argv = yargs(hideBin(process.argv))
   .scriptName('wstap')
   .usage('$0 --log out.ndjson [--ws ws://host:port/ws]')
-  .option('ws', { type: 'string', default: process.env.EMPIRBUS_WS || 'ws://192.168.1.1:8888/ws', describe: 'WebSocket URL' })
+  .option('ws', { type: 'string', default: process.env.EMPIRBUS_WS || 'ws://172.16.11.7:8888/ws', describe: 'WebSocket URL' })
   .option('log', { type: 'string', demandOption: true, describe: 'Output NDJSON log file' })
   .help()
   .parseSync()

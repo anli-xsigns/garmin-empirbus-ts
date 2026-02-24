@@ -1,7 +1,7 @@
 import blessed from 'blessed'
 import { EmpirBusChannelRepository } from '../infrastructure/repositories/EmpirBus/EmpirBusChannelRepository'
 
-const WS_URL = process.env.EMPIRBUS_WS || 'ws://192.168.1.1:8888/ws'
+const WS_URL = process.env.EMPIRBUS_WS || 'ws://172.16.11.7:8888/ws'
 
 type SortKey = 'id' | 'name' | 'updatedAt'
 type SortOrder = 'asc' | 'desc'

@@ -5,12 +5,16 @@ import { LogLine } from './helpers'
 import { MessageType } from './MessageType'
 import WebSocket from 'ws'
 
+type OnLogFn = (logLine: LogLine) => void
+
 export class EmpirBusClient {
     static loggingEnabled: boolean = (process.env.EMPIRBUS_LOG === '1' || !!process.env.EMPIRBUS_LOG_FILE)
-    static logFile: string = process.env.EMPIRBUS_LOG_FILE || 'logs\\empirbus.ndjson'
+    static logFile: string = process.env.EMPIRBUS_LOG_FILE || 'logs\\\\empirbus.ndjson'
+
     private heartbeat: any = null
     private onMessageFns: Array<(msg: any) => void> = []
     private onStateFns: Array<(state: EmpirBusClientState) => void> = []
+    private onLogFns: OnLogFn[] = []
     private ws: WebSocket | null = null
     private logStream: fs.WriteStream | null = null
     private readonly url: string
@@ -21,12 +25,17 @@ export class EmpirBusClient {
         this.setupLogging()
     }
 
+    onLog(fn: OnLogFn) {
+        this.onLogFns.push(fn)
+    }
+
     connect() {
         this.notifyState(EmpirBusClientState.Connecting)
         return new Promise<void>((resolve, reject) => {
             try {
                 const ws = new WebSocket(this.url)
                 this.ws = ws
+
                 ws.onopen = () => {
                     this.writeLog(new LogLine('out', '[connected]'))
                     this.stopSendingHeartbeat()
@@ -34,51 +43,30 @@ export class EmpirBusClient {
                     this.notifyState(EmpirBusClientState.Connected)
                     resolve()
                 }
-                /*ws.onmessage = e => {
-                    this.writeLog(new LogLine('in', (e as MessageEvent).data as string))
-                    const data = JSON.parse((e as MessageEvent).data as string)
-                    this.onMessageFns.forEach(fn => fn(data))
-                }*/
-                ws.on('message', (raw, isBinary) => {
-                    const text =
-                        typeof raw === 'string'
-                            ? raw
-                            : Buffer.isBuffer(raw)
-                                ? raw.toString('utf8')
-                                : Buffer.from(raw as ArrayBuffer).toString('utf8')
 
+                ws.on('message', raw => {
+                    const text = this.toText(raw)
                     this.writeLog(new LogLine('in', text))
                     const data = JSON.parse(text)
                     this.onMessageFns.forEach(fn => fn(data))
                 })
-                ws.onerror = (err: any) => {
+
+                ws.on('close', (code, reason) => {
+                    const reasonText = Buffer.isBuffer(reason) ? reason.toString('utf8') : String(reason || '')
+                    this.writeLog(new LogLine('out', `[closed] code=${code} reason=${reasonText}`))
+                    this.stopSendingHeartbeat()
+                    this.notifyState(EmpirBusClientState.Closed)
+                })
+
+                ws.on('error', (err: any) => {
                     this.writeLog(new LogLine('out', `[error] ${err?.message || 'ws error'}`))
                     this.stopSendingHeartbeat()
                     this.notifyState(EmpirBusClientState.Error)
-                }
-                ws.onclose = () => {
-                    this.writeLog(new LogLine('out', '[closed]'))
-                    this.stopSendingHeartbeat()
-                    this.notifyState(EmpirBusClientState.Closed)
-                }
-            }
-            catch (err) {
+                })
+            } catch (err) {
                 reject(err)
             }
         })
-    }
-
-    private stopSendingHeartbeat() {
-        if (this.heartbeat) {
-            clearInterval(this.heartbeat)
-            this.heartbeat = null
-        }
-    }
-
-    private sendHeartbeatRegularly() {
-        this.heartbeat = setInterval(() => {
-            this.sendJson({ messagetype: MessageType.acknowledgement, messagecmd: 0, size: 1, data: [0] })
-        }, 4 * 1000)
     }
 
     sendJson(data: any) {
@@ -109,6 +97,27 @@ export class EmpirBusClient {
             EmpirBusClient.logFile = opts.file
     }
 
+    private toText(raw: unknown) {
+        if (typeof raw === 'string')
+            return raw
+        if (Buffer.isBuffer(raw))
+            return raw.toString('utf8')
+        return Buffer.from(raw as ArrayBuffer).toString('utf8')
+    }
+
+    private stopSendingHeartbeat() {
+        if (!this.heartbeat)
+            return
+        clearInterval(this.heartbeat)
+        this.heartbeat = null
+    }
+
+    private sendHeartbeatRegularly() {
+        this.heartbeat = setInterval(() => {
+            this.sendJson({ messagetype: MessageType.acknowledgement, messagecmd: 0, size: 1, data: [0] })
+        }, 4 * 1000)
+    }
+
     private setupLogging(): void {
         if (!EmpirBusClient.loggingEnabled)
             return
@@ -119,6 +128,11 @@ export class EmpirBusClient {
     }
 
     private writeLog(logLine: LogLine) {
+        this.onLogFns.forEach(fn => fn(logLine))
+        this.persistLog(logLine)
+    }
+
+    private persistLog(logLine: LogLine) {
         if (!EmpirBusClient.loggingEnabled)
             return
         try {
@@ -126,8 +140,7 @@ export class EmpirBusClient {
             if (this.logStream)
                 this.logStream.write(line)
             else fs.appendFileSync(EmpirBusClient.logFile, line, 'utf8')
-        }
-        catch {
+        } catch {
         }
     }
 
