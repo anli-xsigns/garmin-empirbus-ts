@@ -59,6 +59,14 @@ export class EmpirBusChannelRepository implements IChannelRepository {
     async connect() {
         await this.client.connect()
         this.client.onMessage(m => this.updateChannelFromMessage(m))
+
+        this.subscribeToAllChannels()
+
+        const n2kAll = { messagetype: MessageType.subscriptionRequest, messagecmd: 1, size: 2, data: [0, 0] }
+        this.client.sendJson(n2kAll)
+    }
+
+    private subscribeToAllChannels() {
         const ids = Object.keys(this.channels).map(x => Number(x))
         const data: number[] = []
         for (const id of ids) {
@@ -66,8 +74,6 @@ export class EmpirBusChannelRepository implements IChannelRepository {
         }
         const subscription = { messagetype: MessageType.subscriptionRequest, messagecmd: 0, size: data.length, data }
         this.client.sendJson(subscription)
-        const n2kAll = { messagetype: MessageType.subscriptionRequest, messagecmd: 1, size: 2, data: [0, 0] }
-        this.client.sendJson(n2kAll)
     }
 
     async switch(id: number, toState: SwitchState): Promise<ResultType<string>> {

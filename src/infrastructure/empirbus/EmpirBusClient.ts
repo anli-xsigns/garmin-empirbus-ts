@@ -3,6 +3,7 @@ import * as path from 'path'
 import { EmpirBusClientState } from './EmpirBusClientState'
 import { LogLine } from './helpers'
 import { MessageType } from './MessageType'
+import WebSocket from 'ws'
 
 export class EmpirBusClient {
     static loggingEnabled: boolean = (process.env.EMPIRBUS_LOG === '1' || !!process.env.EMPIRBUS_LOG_FILE)
@@ -33,11 +34,23 @@ export class EmpirBusClient {
                     this.notifyState(EmpirBusClientState.Connected)
                     resolve()
                 }
-                ws.onmessage = e => {
+                /*ws.onmessage = e => {
                     this.writeLog(new LogLine('in', (e as MessageEvent).data as string))
                     const data = JSON.parse((e as MessageEvent).data as string)
                     this.onMessageFns.forEach(fn => fn(data))
-                }
+                }*/
+                ws.on('message', (raw, isBinary) => {
+                    const text =
+                        typeof raw === 'string'
+                            ? raw
+                            : Buffer.isBuffer(raw)
+                                ? raw.toString('utf8')
+                                : Buffer.from(raw as ArrayBuffer).toString('utf8')
+
+                    this.writeLog(new LogLine('in', text))
+                    const data = JSON.parse(text)
+                    this.onMessageFns.forEach(fn => fn(data))
+                })
                 ws.onerror = (err: any) => {
                     this.writeLog(new LogLine('out', `[error] ${err?.message || 'ws error'}`))
                     this.stopSendingHeartbeat()
