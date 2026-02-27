@@ -1,4 +1,4 @@
-import type { IChannelRepository } from '../../../application/IChannelRepository'
+import type { IChannelRepository, Unsubscribe } from '../../../application/IChannelRepository'
 import { FailureCode, Result, ResultType, SucceededCode } from '../../../application/result'
 import type { Channel } from '../../../domain/Channel'
 import { sleep } from '../../../shared/sleep'
@@ -46,20 +46,20 @@ export class EmpirBusChannelRepository implements IChannelRepository {
         return Promise.resolve(list)
     }
 
-    onUpdate(fn: (c: Channel) => void): void {
-        this.subscribers.push(fn)
+    onLog(fn: (line: unknown) => void): Unsubscribe {
+        return this.addListener(this.onLogFns, fn, () => this.onLogFns, next => this.onLogFns = next)
     }
 
-    onState(fn: (state: EmpirBusClientState) => void) {
-        this.onStateFns.push(fn)
+    onState(fn: (state: EmpirBusClientState) => void): Unsubscribe {
+        return this.addListener(this.onStateFns, fn, () => this.onStateFns, next => this.onStateFns = next)
+    }
+
+    onUpdate(fn: (c: Channel) => void): Unsubscribe {
+        return this.addListener(this.subscribers, fn, () => this.subscribers, next => this.subscribers = next)
     }
 
     private notifyState(state: EmpirBusClientState) {
         this.onStateFns.forEach(fn => fn(state))
-    }
-
-    onLog(fn: (line: unknown) => void) {
-        this.onLogFns.push(fn)
     }
 
     private notifyLog(line: unknown) {
@@ -187,5 +187,25 @@ export class EmpirBusChannelRepository implements IChannelRepository {
 
     private getChannelId(data: number[]) {
         return Number(data[0] | (data[1] << 8))
+    }
+
+    private addListener<T>(
+        list: Array<(value: T) => void>,
+        fn: (value: T) => void,
+        getList: () => Array<(value: T) => void>,
+        setList: (next: Array<(value: T) => void>) => void
+    ): Unsubscribe {
+        setList([...list, fn])
+
+        let isActive = true
+
+        return () => {
+            if (!isActive)
+                return
+
+            isActive = false
+            const next = getList().filter(x => x !== fn)
+            setList(next)
+        }
     }
 }
