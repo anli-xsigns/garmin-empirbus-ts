@@ -108,11 +108,49 @@ export class EmpirBusChannelRepository implements IChannelRepository {
         return toggle
     }
 
+    async press(id: number): Promise<ResultType<string>> {
+        this.client.sendJson({
+            messagetype: MessageType.mfdControl,
+            messagecmd: 1,
+            size: 3,
+            data: [id & 255, id >> 8, 1]
+        })
+
+        return Result.succeeded(
+            SucceededCode.ChannelToggledSuccessfully,
+            `Channel ${id} pressed successfully`
+        )
+    }
+
+    async release(id: number): Promise<ResultType<string>> {
+        this.client.sendJson({
+            messagetype: MessageType.mfdControl,
+            messagecmd: 1,
+            size: 3,
+            data: [id & 255, id >> 8, 0]
+        })
+
+        return Result.succeeded(
+            SucceededCode.ChannelToggledSuccessfully,
+            `Channel ${id} released successfully`
+        )
+    }
+
+    async pressFor(id: number, durationMs: number): Promise<ResultType<string>> {
+        const boundedDuration = Math.max(0, Math.round(durationMs))
+
+        await this.press(id)
+        await sleep(boundedDuration)
+        await this.release(id)
+
+        return Result.succeeded(
+            SucceededCode.ChannelToggledSuccessfully,
+            `Channel ${id} pressed for ${boundedDuration} ms successfully`
+        )
+    }
+
     async toggle(id: number): Promise<ResultType<string>> {
-        this.client.sendJson({ messagetype: MessageType.mfdControl, messagecmd: 1, size: 3, data: [id & 255, id >> 8, 1] })
-        await sleep(100)
-        this.client.sendJson({ messagetype: MessageType.mfdControl, messagecmd: 1, size: 3, data: [id & 255, id >> 8, 0] })
-        return Result.succeeded(SucceededCode.ChannelToggledSuccessfully, `Channel ${id} toggled successfully`)
+        return this.pressFor(id, 100)
     }
 
     dim(id: number, level: DimState): ResultType<string> {
