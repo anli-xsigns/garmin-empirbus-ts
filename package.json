@@ -28,7 +28,7 @@
   "dependencies": {
     "blessed": "^0.1.81",
     "ws": "^8.19.0",
-    "yargs": "^18.0.0"
+    "yargs": "17"
   },
   "devDependencies": {
     "@types/blessed": "^0.1.25",
