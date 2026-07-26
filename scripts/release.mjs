@@ -2,8 +2,6 @@ import { spawnSync } from 'node:child_process'
 import { resolve, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-const registry = 'https://registry.npmjs.org/'
-
 const getProjectRoot = () => {
     const filename = fileURLToPath(import.meta.url)
     const scriptsDir = dirname(filename)
@@ -11,7 +9,6 @@ const getProjectRoot = () => {
 }
 
 const projectRoot = getProjectRoot()
-const userconfig = resolve(projectRoot, '.npmrc')
 
 const isWindows = () => process.platform === 'win32'
 
@@ -86,9 +83,7 @@ const runCapture = (cmd, args, options = {}) => {
 }
 
 const npmEnv = () => ({
-    ...process.env,
-    npm_config_userconfig: userconfig,
-    npm_config_registry: registry
+    ...process.env
 })
 
 const ensureCleanGit = () => {
