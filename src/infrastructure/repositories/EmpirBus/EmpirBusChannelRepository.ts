@@ -95,29 +95,34 @@ export class EmpirBusChannelRepository implements IChannelRepository {
     }
 
     async switch(id: number, toState: SwitchState): Promise<ResultType<string>> {
-        const on = toState === true || toState === 1 || toState.toString().toLowerCase() === 'on'
-        const desiredState = on ? 1 : 0
+        const on = toState === true
+            || toState === 1
+            || toState.toString().toLowerCase() === 'on'
 
         const channel = this.getChannelById(id)
         if (!channel)
-            return Result.failed(FailureCode.ChannelNotFound, `Channel ${id} not found`)
+            return Result.failed(
+                FailureCode.ChannelNotFound,
+                `Channel ${id} not found`
+            )
 
-        if (channel.rawValue === desiredState) {
+        const currentState = channel.rawValue !== null
+            ? (channel.rawValue & 1) !== 0
+            : null
+
+        if (currentState === on) {
             return Result.succeeded(
                 SucceededCode.ChannelHadAlreadyDesiredState,
-                `Channel ${id} is already in state ${toState}`
+                `Channel ${id} is already in state ${on ? 'on' : 'off'}`
             )
         }
 
-        const toggle = await this.toggle(id)
-        if (toggle.succeeded) {
-            return Result.succeeded(
-                SucceededCode.ChannelSwitchedSuccessfully,
-                `Channel ${id} successfully switched to state ${toState}`
-            )
-        }
+        this.sendToggleCommand(id, on)
 
-        return toggle
+        return Result.succeeded(
+            SucceededCode.ChannelSwitchedSuccessfully,
+            `Channel ${id} successfully switched to state ${on ? 'on' : 'off'}`
+        )
     }
 
     async press(id: number): Promise<ResultType<string>> {
@@ -192,7 +197,22 @@ export class EmpirBusChannelRepository implements IChannelRepository {
     }
 
     async toggle(id: number): Promise<ResultType<string>> {
-        return this.pressFor(id, 100)
+        const channel = this.getChannelById(id)
+        if (!channel)
+            return Result.failed(
+                FailureCode.ChannelNotFound,
+                `Channel ${id} not found`
+            )
+
+        if (channel.rawValue === null)
+            return Result.failed(
+                FailureCode.Other,
+                `Current state of channel ${id} is not known`
+            )
+
+        const currentState = (channel.rawValue & 1) !== 0
+
+        return this.switch(id, !currentState)
     }
 
     dim(id: number, level: DimState): ResultType<string> {
@@ -306,5 +326,22 @@ export class EmpirBusChannelRepository implements IChannelRepository {
             const next = getList().filter(value => value !== fn)
             setList(next)
         }
+    }
+
+    private sendToggleCommand(id: number, on: boolean): void {
+        const pressed = 1
+        const desiredState = on ? 2 : 4
+        const flags = pressed | desiredState
+
+        this.client.sendJson({
+            messagetype: MessageType.mfdControl,
+            messagecmd: 0,
+            size: 3,
+            data: [
+                id & 255,
+                (id >> 8) & 255,
+                flags
+            ]
+        })
     }
 }

@@ -27,7 +27,6 @@ export const runControl = async (ws: string, target: string, action: Action, val
   if (!resolved) throw new Error(`Kanal nicht gefunden: ${target}`)
   const chan = (repo as any).channels?.[resolved.id]
 
-  const isSwitchable = Number(chan?.channelType) === 1
   const isDimmable = Number(chan?.channelType) === 3
 
   if (action === 'dim') {
@@ -39,13 +38,13 @@ export const runControl = async (ws: string, target: string, action: Action, val
     if (isDimmable)
       repo.dim(resolved.id, 100)
     else
-      await repo.toggle(resolved.id)
+      await repo.switch(resolved.id, true)
   }
   else if (action === 'off') {
     if (isDimmable)
       repo.dim(resolved.id, 0)
     else
-      await repo.toggle(resolved.id)
+      await repo.switch(resolved.id, false)
   }
   else if (action === 'toggle') {
     await repo.toggle(resolved.id)
