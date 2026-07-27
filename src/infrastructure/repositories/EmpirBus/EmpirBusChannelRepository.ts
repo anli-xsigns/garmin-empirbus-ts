@@ -252,35 +252,82 @@ export class EmpirBusChannelRepository implements IChannelRepository {
         if (!channel)
             return
 
-        let raw = Number(data[2])
-        if (messageType === 16)
-            raw = this.processMessageType16(msg, data, raw, channel)
+        const raw = messageType === MessageType.mfdStatus
+            ? this.processMfdStatusMessage(msg, data, channel)
+            : Number(data[2])
+
+        if (raw === null)
+            return
 
         channel.rawValue = raw
-        channel.decodedValue = decodeValue(channel, raw)
+        channel.decodedValue = this.decodeChannelValue(channel, raw, Number(msg.messagecmd))
         channel.updatedAt = Date.now()
         this.subscribers.forEach(fn => fn(channel))
     }
 
-    private processMessageType16(msg: any, data: number[], raw: number, channel: Channel) {
-        if (Number(msg.messagecmd) === 3 && data.length >= 5) {
-            const valueTypeIdentifier = Number(data[3]) | 0
-            const v0 = Number(data[3] ?? 0) & 0xff
-            const v1 = Number(data[4] ?? 0) & 0xff
-            raw = (v0 | (v1 << 8)) | 0
-            channel.dataItemFormatType = valueTypeIdentifier
-        }
-        else if (Number(msg.messagecmd) === 5 && data.length >= 8) {
-            const valueTypeIdentifier = Number(data[3]) | 0
-            const v0 = Number(data[4] ?? 0) & 0xff
-            const v1 = Number(data[5] ?? 0) & 0xff
-            const v2 = Number(data[6] ?? 0) & 0xff
-            const v3 = Number(data[7] ?? 0) & 0xff
-            raw = (v0 | (v1 << 8) | (v2 << 16) | (v3 << 24)) | 0
-            channel.dataItemFormatType = valueTypeIdentifier
-        }
+    private processMfdStatusMessage(msg: any, data: number[], channel: Channel): number | null {
+        const command = Number(msg.messagecmd)
 
-        return raw
+        switch (command) {
+            case 0: // toggle / pulse
+            case 1: // momentary
+                this.applyStatusByte(channel, data[2])
+                return Number(data[2])
+
+            case 3: // dimmer update
+                if (data.length < 5)
+                    return null
+
+                this.applyStatusByte(channel, data[2])
+                return this.getUInt16(data, 3)
+
+            case 5: // generic status update
+                if (data.length < 8)
+                    return null
+
+                this.clearSwitchStatus(channel)
+                channel.unavailable = (Number(data[2]) & 0x80) !== 0
+                channel.dataItemFormatType = Number(data[3]) & 0xff
+                return this.getInt32(data, 4)
+
+            default:
+                return Number(data[2])
+        }
+    }
+
+    private applyStatusByte(channel: Channel, value: number) {
+        const status = Number(value) & 0xff
+        channel.onOffStatus = (status & 0x01) !== 0
+        channel.error1 = (status & 0x02) !== 0
+        channel.error2 = (status & 0x08) !== 0
+        channel.unavailable = (status & 0x80) !== 0
+    }
+
+    private clearSwitchStatus(channel: Channel) {
+        channel.onOffStatus = null
+        channel.error1 = null
+        channel.error2 = null
+    }
+
+    private decodeChannelValue(channel: Channel, raw: number, command: number) {
+        if (command === 0 || command === 1)
+            return channel.onOffStatus
+
+        return decodeValue(channel, raw)
+    }
+
+    private getUInt16(data: number[], offset: number) {
+        const v0 = Number(data[offset] ?? 0) & 0xff
+        const v1 = Number(data[offset + 1] ?? 0) & 0xff
+        return v0 | (v1 << 8)
+    }
+
+    private getInt32(data: number[], offset: number) {
+        const bytes = new Uint8Array(4)
+        for (let index = 0; index < bytes.length; index++)
+            bytes[index] = Number(data[offset + index] ?? 0) & 0xff
+
+        return new DataView(bytes.buffer).getInt32(0, true)
     }
 
     private isSupportedMessageType(type: number) {

@@ -1,8 +1,5 @@
-import type { IChannelRepository } from '../../../../application/IChannelRepository'
 import type { Channel } from '../../../../domain/Channel'
 import { toCamelCase } from '../../../../shared/case'
-import { EmpirBusClient } from '../../../empirbus/EmpirBusClient'
-import { MessageType } from '../../../empirbus/MessageType'
 import signals from '../../../../signal-info.json'
 import { MapById } from './MapById'
 
@@ -13,17 +10,21 @@ export const buildInitialChannels = (): MapById<Channel> => {
         const description = String(s.description || '')
         const name = toCamelCase(String((s as any).name || description))
         map[id] = {
-            id,
-            name,
-            description,
-            type: s.type,
+            channelSettingType: s.channelSettingType,
             channelType: s.channelType,
             dataItemFormatType: s.dataItemFormatType,
             dataType: s.dataType,
-            channelSettingType: s.channelSettingType,
-            rawValue: null,
             decodedValue: null,
-            updatedAt: null
+            description,
+            error1: null,
+            error2: null,
+            id,
+            name,
+            onOffStatus: null,
+            rawValue: null,
+            type: s.type,
+            unavailable: null,
+            updatedAt: null,
         }
     }
     return map

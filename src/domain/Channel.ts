@@ -9,5 +9,9 @@ export type Channel = {
     description: string
     rawValue: number | null
     decodedValue: number | boolean | string | null
+    onOffStatus: boolean | null
+    error1: boolean | null
+    error2: boolean | null
+    unavailable: boolean | null
     updatedAt: number | null
 }
