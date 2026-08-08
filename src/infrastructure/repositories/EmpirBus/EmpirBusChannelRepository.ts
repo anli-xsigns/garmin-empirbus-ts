@@ -106,18 +106,7 @@ export class EmpirBusChannelRepository implements IChannelRepository {
                 `Channel ${id} not found`
             )
 
-        const currentState = channel.rawValue !== null
-            ? (channel.rawValue & 1) !== 0
-            : null
-
-        if (currentState === on) {
-            return Result.succeeded(
-                SucceededCode.ChannelHadAlreadyDesiredState,
-                `Channel ${id} is already in state ${on ? 'on' : 'off'}`
-            )
-        }
-
-        this.sendToggleCommand(id, on)
+        this.toggleCommand(id, true, on, !on)
 
         return Result.succeeded(
             SucceededCode.ChannelSwitchedSuccessfully,
@@ -126,12 +115,7 @@ export class EmpirBusChannelRepository implements IChannelRepository {
     }
 
     async press(id: number): Promise<ResultType<string>> {
-        this.client.sendJson({
-            messagetype: MessageType.mfdControl,
-            messagecmd: 1,
-            size: 3,
-            data: [id & 255, id >> 8, 1]
-        })
+        this.momentaryCommand(id, true)
 
         return Result.succeeded(
             SucceededCode.ChannelToggledSuccessfully,
@@ -140,12 +124,7 @@ export class EmpirBusChannelRepository implements IChannelRepository {
     }
 
     async release(id: number): Promise<ResultType<string>> {
-        this.client.sendJson({
-            messagetype: MessageType.mfdControl,
-            messagecmd: 1,
-            size: 3,
-            data: [id & 255, id >> 8, 0]
-        })
+        this.momentaryCommand(id, false)
 
         return Result.succeeded(
             SucceededCode.ChannelToggledSuccessfully,
@@ -197,22 +176,32 @@ export class EmpirBusChannelRepository implements IChannelRepository {
     }
 
     async toggle(id: number): Promise<ResultType<string>> {
-        const channel = this.getChannelById(id)
-        if (!channel)
-            return Result.failed(
-                FailureCode.ChannelNotFound,
-                `Channel ${id} not found`
-            )
+        return this.toggleMany([id])
+    }
 
-        if (channel.rawValue === null)
-            return Result.failed(
-                FailureCode.Other,
-                `Current state of channel ${id} is not known`
-            )
+    async toggleMany(ids: number[]): Promise<ResultType<string>> {
+        const uniqueIds = [...new Set(ids)]
+        if (uniqueIds.length === 0)
+            return Result.failed(FailureCode.ChannelNotFound, 'No channel ids provided')
 
-        const currentState = (channel.rawValue & 1) !== 0
+        const missingIds = uniqueIds.filter(id => !this.getChannelById(id))
+        if (missingIds.length > 0)
+            return Result.failed(FailureCode.ChannelNotFound, `Channels not found: ${missingIds.join(', ')}`)
 
-        return this.switch(id, !currentState)
+        const unknownIds = uniqueIds.filter(id => this.getChannelById(id)?.rawValue === null)
+        if (unknownIds.length > 0)
+            return Result.failed(FailureCode.Other, `Current state is not known for channels: ${unknownIds.join(', ')}`)
+
+        uniqueIds.forEach(id => {
+            const channel = this.getChannelById(id)!
+            const currentState = (channel.rawValue! & 1) !== 0
+            this.toggleCommand(id, true, !currentState, currentState)
+        })
+
+        return Result.succeeded(
+            SucceededCode.ChannelToggledSuccessfully,
+            `Channels ${uniqueIds.join(', ')} toggled successfully`
+        )
     }
 
     dim(id: number, level: DimState): ResultType<string> {
@@ -375,20 +364,32 @@ export class EmpirBusChannelRepository implements IChannelRepository {
         }
     }
 
-    private sendToggleCommand(id: number, on: boolean): void {
-        const pressed = 1
-        const desiredState = on ? 2 : 4
-        const flags = pressed | desiredState
-
+    toggleCommand(id: number, pressed: boolean, on: boolean, off: boolean): void {
+        const flags = (pressed ? 1 : 0) | (on ? 2 : 0) | (off ? 4 : 0)
         this.client.sendJson({
             messagetype: MessageType.mfdControl,
             messagecmd: 0,
             size: 3,
-            data: [
-                id & 255,
-                (id >> 8) & 255,
-                flags
-            ]
+            data: [id & 255, (id >> 8) & 255, flags]
         })
+    }
+
+    momentaryCommand(id: number, pressed: boolean): void {
+        this.client.sendJson({
+            messagetype: MessageType.mfdControl,
+            messagecmd: 1,
+            size: 3,
+            data: [id & 255, (id >> 8) & 255, pressed ? 1 : 0]
+        })
+    }
+
+    sendRawCommand(command: { messagetype: number; messagecmd: number; size?: number; data: number[] }): void {
+        const telegram = {
+            messagetype: command.messagetype,
+            messagecmd: command.messagecmd,
+            size: command.size ?? command.data.length,
+            data: [...command.data]
+        }
+        this.client.sendJson(telegram)
     }
 }
