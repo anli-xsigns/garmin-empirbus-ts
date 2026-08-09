@@ -1,3 +1,5 @@
+export type MfdType = 'pulse' | 'momentary' | 'dimmer' | 'status' | null
+
 export type Channel = {
     type: number
     channelType: number
@@ -13,5 +15,6 @@ export type Channel = {
     error1: boolean | null
     error2: boolean | null
     unavailable: boolean | null
+    mfdType: MfdType
     updatedAt: number | null
 }

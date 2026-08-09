@@ -11,6 +11,8 @@ import { buildInitialChannels, decodeValue, MapById } from './helpers'
 export type SwitchState = boolean | 1 | 0 | 'On' | 'Off' | 'ON' | 'OFF' | 'on' | 'off'
 export type DimState = number
 
+const MOMENTARY_SWITCH_DURATION_MS = 150
+
 export interface PressForCallbacks {
     onPress?: () => void | Promise<void>
     onRelease?: () => void | Promise<void>
@@ -106,22 +108,51 @@ export class EmpirBusChannelRepository implements IChannelRepository {
     }
 
     async switch(id: number, toState: SwitchState): Promise<ResultType<string>> {
-        const on = toState === true
-            || toState === 1
-            || toState.toString().toLowerCase() === 'on'
+        return this.switchMany([id], toState)
+    }
 
-        const channel = this.getChannelById(id)
-        if (!channel)
-            return Result.failed(
-                FailureCode.ChannelNotFound,
-                `Channel ${id} not found`
-            )
+    async switchMany(ids: number[], toState: SwitchState): Promise<ResultType<string>> {
+        const uniqueIds = [...new Set(ids)]
+        if (uniqueIds.length === 0)
+            return Result.failed(FailureCode.ChannelNotFound, 'No channel ids provided')
 
-        this.toggleCommand(id, true, on, !on)
+        const channels = uniqueIds.map(id => this.getChannelById(id))
+        const missingIds = uniqueIds.filter((id, index) => !channels[index])
+        if (missingIds.length > 0)
+            return Result.failed(FailureCode.ChannelNotFound, `Channels not found: ${missingIds.join(', ')}`)
+
+        const unknownTypeIds = uniqueIds.filter((id, index) => channels[index]?.mfdType === null)
+        if (unknownTypeIds.length > 0)
+            return Result.failed(FailureCode.Other, `MFD type is not known for channels: ${unknownTypeIds.join(', ')}`)
+
+        const unsupportedIds = uniqueIds.filter((id, index) => !['pulse', 'momentary'].includes(String(channels[index]?.mfdType)))
+        if (unsupportedIds.length > 0)
+            return Result.failed(FailureCode.Other, `Channels do not support switch semantics: ${unsupportedIds.join(', ')}`)
+
+        const momentaryUnknownStateIds = uniqueIds.filter((id, index) => channels[index]?.mfdType === 'momentary' && channels[index]?.onOffStatus === null)
+        if (momentaryUnknownStateIds.length > 0)
+            return Result.failed(FailureCode.Other, `Current state is not known for momentary channels: ${momentaryUnknownStateIds.join(', ')}`)
+
+        const on = this.normalizeSwitchState(toState)
+        const momentaryIds: number[] = []
+
+        uniqueIds.forEach((id, index) => {
+            const channel = channels[index]!
+            if (channel.mfdType === 'pulse')
+                this.toggleCommand(id, true, on, !on)
+            else if (channel.onOffStatus !== on)
+                momentaryIds.push(id)
+        })
+
+        if (momentaryIds.length > 0) {
+            const result = await this.pressForMany(momentaryIds, MOMENTARY_SWITCH_DURATION_MS)
+            if (result.hasFailed)
+                return result
+        }
 
         return Result.succeeded(
             SucceededCode.ChannelSwitchedSuccessfully,
-            `Channel ${id} successfully switched to state ${on ? 'on' : 'off'}`
+            `Channels ${uniqueIds.join(', ')} successfully switched to state ${on ? 'on' : 'off'}`
         )
     }
 
@@ -147,11 +178,7 @@ export class EmpirBusChannelRepository implements IChannelRepository {
         return this.pressForMany([id], durationMs, callbacks)
     }
 
-    async pressForMany(
-        ids: number[],
-        durationMs: number,
-        callbacks?: PressForCallbacks
-    ): Promise<ResultType<string>> {
+    async pressForMany(ids: number[], durationMs: number, callbacks?: PressForCallbacks): Promise<ResultType<string>> {
         const boundedDuration = Math.max(0, Math.round(durationMs))
         const uniqueIds = [...new Set(ids)]
 
@@ -231,6 +258,12 @@ export class EmpirBusChannelRepository implements IChannelRepository {
         )
     }
 
+    private normalizeSwitchState(toState: SwitchState) {
+        return toState === true
+            || toState === 1
+            || toState.toString().toLowerCase() === 'on'
+    }
+
     private getFailedResults(results: Array<ResultType<string>>) {
         return results.filter(result => result.hasFailed)
     }
@@ -269,22 +302,29 @@ export class EmpirBusChannelRepository implements IChannelRepository {
         const command = Number(msg.messagecmd)
 
         switch (command) {
-            case 0: // toggle / pulse
-            case 1: // momentary
+            case 0:
+                channel.mfdType = 'pulse'
                 this.applyStatusByte(channel, data[2])
                 return Number(data[2])
 
-            case 3: // dimmer update
+            case 1:
+                channel.mfdType = 'momentary'
+                this.applyStatusByte(channel, data[2])
+                return Number(data[2])
+
+            case 3:
+                channel.mfdType = 'dimmer'
                 if (data.length < 5)
                     return null
 
                 this.applyStatusByte(channel, data[2])
                 return this.getUInt16(data, 3)
 
-            case 5: // generic status update
+            case 5:
                 if (data.length < 8)
                     return null
 
+                channel.mfdType = 'status'
                 this.clearSwitchStatus(channel)
                 channel.unavailable = (Number(data[2]) & 0x80) !== 0
                 channel.dataItemFormatType = Number(data[3]) & 0xff

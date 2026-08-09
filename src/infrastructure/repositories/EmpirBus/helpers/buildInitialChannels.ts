@@ -19,6 +19,7 @@ export const buildInitialChannels = (): MapById<Channel> => {
             error1: null,
             error2: null,
             id,
+            mfdType: null,
             name,
             onOffStatus: null,
             rawValue: null,

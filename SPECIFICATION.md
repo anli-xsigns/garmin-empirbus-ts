@@ -53,6 +53,7 @@ type Channel = {
     error1: boolean | null
     error2: boolean | null
     unavailable: boolean | null
+    mfdType: 'pulse' | 'momentary' | 'dimmer' | 'status' | null
     updatedAt: number | null
 }
 ```
@@ -152,7 +153,7 @@ Therefore:
 
 ### 6.3 API semantics
 
-`switch(id, state)` is an explicit target-state operation.
+`switch(id, state)` is a target-state operation. The repository automatically chooses the transport behavior from the channel's learned `mfdType`.
 
 Accepted `SwitchState` forms currently include:
 
@@ -164,7 +165,7 @@ String state matching is case-insensitive conceptually and should remain so if t
 
 Normative rule:
 
-> `switch()` must send every valid request. The repository cache must never suppress transmission because the locally stored state already matches the requested target state.
+> For `pulse` channels, `switch()` must send every valid request and cached state must not suppress transmission. For `momentary` channels, the cached `onOffStatus` is required to determine whether a press/release is necessary.
 
 This rule exists because the command expresses an explicit requested target state and the cache may be stale.
 
@@ -435,3 +436,25 @@ Do not:
 The library exposes raw, read-only EmpirBus communication events through `EmpirBusClient.onCommunication()` and `EmpirBusChannelRepository.onCommunication()`.
 
 Each event contains `direction` (`rx` or `tx`), `timestamp`, and a copied raw `message` containing `messagetype`, `messagecmd`, `size`, and `data`. Observation must not change protocol processing or require file logging to be enabled. Heartbeats and subscription/system traffic are included so adapters can decide what to filter.
+
+## Learned MFD control type
+
+Every processable incoming MFD status message updates `Channel.mfdType` from `messagecmd`:
+
+```text
+0 -> pulse
+1 -> momentary
+3 -> dimmer
+5 -> status
+```
+
+This value is runtime-learned and must not be inferred from static channel metadata.
+
+For target-state switching:
+
+- `pulse`: send explicit ON/OFF command every time,
+- `momentary`: compare target with `onOffStatus`; if different, press for 150 ms then release,
+- unknown/unsupported: fail without sending,
+- never optimistically update the channel after sending.
+
+Multi-channel target-state switching must validate every selected channel before transmitting anything.

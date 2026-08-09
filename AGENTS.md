@@ -36,9 +36,11 @@ A Garmin UI Switch uses MFD control `messagecmd = 0`.
 
 - ON is an explicit target-state command.
 - OFF is an explicit target-state command.
-- `switch()` must always send the requested state.
-- Never suppress `switch()` because the cached state already equals the requested state.
-- Cache/state is irrelevant for the semantics of `switch()`.
+- `switch()` is a target-state operation.
+- For channels learned as `pulse`, every valid request sends an explicit ON/OFF command and cached state must not suppress it.
+- For channels learned as `momentary`, compare the requested state with `onOffStatus`; only a differing target causes a 150 ms press/release.
+- If MFD type or required momentary state is unknown, fail without sending.
+- Never optimistically update the cached state after sending.
 
 ### Toggle
 
@@ -55,7 +57,7 @@ A Garmin UI Button / `SendMomentary` uses MFD control `messagecmd = 1`.
 
 - Press and release are separate telegrams.
 - Long press is not a separate protocol command; it is press, wait, release.
-- Do not merge momentary semantics into switch semantics.
+- Do not expose momentary as a separate public switch mode. The repository automatically derives switch transport behavior from the learned MFD status type.
 
 ### Dimmer
 
@@ -118,3 +120,7 @@ Do not implement:
 Those belong in higher layers.
 
 - Keep raw communication observation transport-level and read-only. Do not add Node-RED-specific filtering to `garmin-empirbus-ts`.
+
+## Learned MFD type
+
+`Channel.mfdType` is learned from incoming MFD status messages: `messagecmd 0` = `pulse`, `1` = `momentary`, `3` = `dimmer`, `5` = `status`. Preserve this information independently from `channelType`.

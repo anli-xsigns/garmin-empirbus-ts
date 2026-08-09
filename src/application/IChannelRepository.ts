@@ -14,6 +14,7 @@ export interface IChannelRepository {
   onState(fn: (state: EmpirBusClientState) => void): Unsubscribe
   onUpdate(fn: (c: Channel) => void): Unsubscribe
   switch(id: number, toState: SwitchState): Promise<ResultType<string>>
+  switchMany(ids: number[], toState: SwitchState): Promise<ResultType<string>>
   toggle(id: number): Promise<ResultType<string>>
 }
 

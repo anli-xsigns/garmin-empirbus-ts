@@ -36,3 +36,13 @@ $env:EMPIRBUS_LOG="1"
 ## Raw communication observation
 
 `EmpirBusClient` and `EmpirBusChannelRepository` expose `onCommunication(listener)` for passive observation of all valid raw RX/TX EmpirBus telegrams, including heartbeats and system/subscription traffic. Each event contains `direction`, `timestamp`, and a copied `message`. Consumers are responsible for filtering; observation never changes protocol processing.
+
+## Target-state switch behavior
+
+Channels learn their MFD control type from incoming MFD status messages (`messagecmd` 0 = pulse, 1 = momentary, 3 = dimmer, 5 = generic status). `switch()` uses that runtime information automatically:
+
+- pulse channels receive an explicit ON/OFF command,
+- momentary channels compare the requested target with `onOffStatus` and send a 150 ms press/release only when the target differs,
+- unknown or unsupported types fail without sending.
+
+The repository never optimistically changes the cached state after sending a momentary target-state command.
