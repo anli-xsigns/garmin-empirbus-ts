@@ -1,5 +1,6 @@
 export { Channel } from './domain/Channel'
 export { EmpirBusClient } from './infrastructure/empirbus/EmpirBusClient'
+export { EmpirBusCommunicationDirection, EmpirBusCommunicationEvent, EmpirBusMessage } from './infrastructure/empirbus/EmpirBusCommunicationEvent'
 export { EmpirBusClientState } from './infrastructure/empirbus/EmpirBusClientState'
 export { MessageType } from './infrastructure/empirbus/MessageType'
 export { DimState, EmpirBusChannelRepository, PressForCallbacks, SwitchState } from './infrastructure/repositories/EmpirBus/EmpirBusChannelRepository'

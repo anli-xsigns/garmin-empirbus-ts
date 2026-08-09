@@ -116,3 +116,5 @@ Do not implement:
 - camper/heating business rules.
 
 Those belong in higher layers.
+
+- Keep raw communication observation transport-level and read-only. Do not add Node-RED-specific filtering to `garmin-empirbus-ts`.

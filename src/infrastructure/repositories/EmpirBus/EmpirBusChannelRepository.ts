@@ -3,6 +3,7 @@ import { Failure, FailureCode, Result, ResultType, SucceededCode } from '../../.
 import type { Channel } from '../../../domain/Channel'
 import { sleep } from '../../../shared/sleep'
 import { EmpirBusClient } from '../../empirbus/EmpirBusClient'
+import { EmpirBusCommunicationEvent } from '../../empirbus/EmpirBusCommunicationEvent'
 import { EmpirBusClientState } from '../../empirbus/EmpirBusClientState'
 import { MessageType } from '../../empirbus/MessageType'
 import { buildInitialChannels, decodeValue, MapById } from './helpers'
@@ -21,12 +22,14 @@ export class EmpirBusChannelRepository implements IChannelRepository {
     private subscribers: Array<(c: Channel) => void> = []
     private onStateFns: Array<(state: EmpirBusClientState) => void> = []
     private onLogFns: Array<(line: unknown) => void> = []
+    private onCommunicationFns: Array<(event: EmpirBusCommunicationEvent) => void> = []
 
     constructor(url: string) {
         this.channels = buildInitialChannels()
 
         this.client = new EmpirBusClient(url)
         this.client.onLog(line => this.notifyLog(line))
+        this.client.onCommunication(event => this.notifyCommunication(event))
         this.client.onState(state => {
             if (state === EmpirBusClientState.Connected)
                 this.subscribeAllUpdates()
@@ -49,6 +52,10 @@ export class EmpirBusChannelRepository implements IChannelRepository {
         return Promise.resolve(list)
     }
 
+    onCommunication(fn: (event: EmpirBusCommunicationEvent) => void): Unsubscribe {
+        return this.addListener(this.onCommunicationFns, fn, () => this.onCommunicationFns, next => this.onCommunicationFns = next)
+    }
+
     onLog(fn: (line: unknown) => void): Unsubscribe {
         return this.addListener(this.onLogFns, fn, () => this.onLogFns, next => this.onLogFns = next)
     }
@@ -63,6 +70,10 @@ export class EmpirBusChannelRepository implements IChannelRepository {
 
     private notifyState(state: EmpirBusClientState) {
         this.onStateFns.forEach(fn => fn(state))
+    }
+
+    private notifyCommunication(event: EmpirBusCommunicationEvent) {
+        this.onCommunicationFns.forEach(fn => fn(event))
     }
 
     private notifyLog(line: unknown) {

@@ -1,6 +1,7 @@
 import * as fs from 'fs'
 import * as path from 'path'
 import { EmpirBusClientState } from './EmpirBusClientState'
+import { EmpirBusCommunicationEvent, EmpirBusMessage } from './EmpirBusCommunicationEvent'
 import { LogLine } from './helpers'
 import { MessageType } from './MessageType'
 import WebSocket from 'ws'
@@ -15,6 +16,7 @@ export class EmpirBusClient {
     private onMessageFns: Array<(msg: any) => void> = []
     private onStateFns: Array<(state: EmpirBusClientState) => void> = []
     private onLogFns: OnLogFn[] = []
+    private onCommunicationFns: Array<(event: EmpirBusCommunicationEvent) => void> = []
     private ws: WebSocket | null = null
     private logStream: fs.WriteStream | null = null
     private readonly url: string
@@ -27,6 +29,13 @@ export class EmpirBusClient {
 
     onLog(fn: OnLogFn) {
         this.onLogFns.push(fn)
+    }
+
+    onCommunication(fn: (event: EmpirBusCommunicationEvent) => void) {
+        this.onCommunicationFns.push(fn)
+        return () => {
+            this.onCommunicationFns = this.onCommunicationFns.filter(listener => listener !== fn)
+        }
     }
 
     connect() {
@@ -44,14 +53,15 @@ export class EmpirBusClient {
                     resolve()
                 }
 
-                ws.on('message', raw => {
+                ws.on('message', (raw: unknown) => {
                     const text = this.toText(raw)
                     this.writeLog(new LogLine('in', text))
                     const data = JSON.parse(text)
+                    this.notifyCommunication('rx', data)
                     this.onMessageFns.forEach(fn => fn(data))
                 })
 
-                ws.on('close', (code, reason) => {
+                ws.on('close', (code: number, reason: unknown) => {
                     const reasonText = Buffer.isBuffer(reason) ? reason.toString('utf8') : String(reason || '')
                     this.writeLog(new LogLine('out', `[closed] code=${code} reason=${reasonText}`))
                     this.stopSendingHeartbeat()
@@ -74,6 +84,7 @@ export class EmpirBusClient {
             return
         const payload = JSON.stringify(data)
         this.ws.send(payload)
+        this.notifyCommunication('tx', data)
         this.writeLog(new LogLine('out', payload))
     }
 
@@ -160,6 +171,36 @@ export class EmpirBusClient {
             else fs.appendFileSync(EmpirBusClient.logFile, line, 'utf8')
         } catch {
         }
+    }
+
+
+    private notifyCommunication(direction: 'rx' | 'tx', message: unknown) {
+        if (!this.isEmpirBusMessage(message))
+            return
+
+        const event: EmpirBusCommunicationEvent = {
+            direction,
+            timestamp: Date.now(),
+            message: {
+                messagetype: message.messagetype,
+                messagecmd: message.messagecmd,
+                size: message.size,
+                data: [...message.data]
+            }
+        }
+
+        this.onCommunicationFns.forEach(fn => fn(event))
+    }
+
+    private isEmpirBusMessage(message: unknown): message is EmpirBusMessage {
+        if (!message || typeof message !== 'object')
+            return false
+
+        const value = message as Partial<EmpirBusMessage>
+        return Number.isInteger(value.messagetype)
+            && Number.isInteger(value.messagecmd)
+            && Number.isInteger(value.size)
+            && Array.isArray(value.data)
     }
 
     private notifyState(state: EmpirBusClientState) {

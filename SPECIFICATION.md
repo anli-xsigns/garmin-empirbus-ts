@@ -429,3 +429,9 @@ Do not:
 - mutate raw command inputs,
 - partially execute a multi-channel toggle when one state is unknown,
 - add Node-RED-specific concepts to this package.
+
+## Communication observation
+
+The library exposes raw, read-only EmpirBus communication events through `EmpirBusClient.onCommunication()` and `EmpirBusChannelRepository.onCommunication()`.
+
+Each event contains `direction` (`rx` or `tx`), `timestamp`, and a copied raw `message` containing `messagetype`, `messagecmd`, `size`, and `data`. Observation must not change protocol processing or require file logging to be enabled. Heartbeats and subscription/system traffic are included so adapters can decide what to filter.

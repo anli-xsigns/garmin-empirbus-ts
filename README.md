@@ -32,3 +32,7 @@ Tasten: F=Filter, I=In, O=Out, A=All, C=Clear, S=Save, Q=Quit
 node dist/bin/wstap.js --log traffic.ndjson --ws ws://192.168.1.1:8888/ws
 ```
 $env:EMPIRBUS_LOG="1"
+
+## Raw communication observation
+
+`EmpirBusClient` and `EmpirBusChannelRepository` expose `onCommunication(listener)` for passive observation of all valid raw RX/TX EmpirBus telegrams, including heartbeats and system/subscription traffic. Each event contains `direction`, `timestamp`, and a copied `message`. Consumers are responsible for filtering; observation never changes protocol processing.
