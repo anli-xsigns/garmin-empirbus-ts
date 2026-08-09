@@ -9,6 +9,7 @@ import { MessageType } from '../../empirbus/MessageType'
 import { buildInitialChannels, decodeValue, MapById } from './helpers'
 
 export type SwitchState = boolean | 1 | 0 | 'On' | 'Off' | 'ON' | 'OFF' | 'on' | 'off'
+export type OperationCallbacks = { onStart?: () => void | Promise<void> }
 export type DimState = number
 
 const MOMENTARY_SWITCH_DURATION_MS = 150
@@ -107,11 +108,11 @@ export class EmpirBusChannelRepository implements IChannelRepository {
         this.client.sendJson(subscription)
     }
 
-    async switch(id: number, toState: SwitchState): Promise<ResultType<string>> {
-        return this.switchMany([id], toState)
+    async switch(id: number, toState: SwitchState, callbacks?: OperationCallbacks): Promise<ResultType<string>> {
+        return this.switchMany([id], toState, callbacks)
     }
 
-    async switchMany(ids: number[], toState: SwitchState): Promise<ResultType<string>> {
+    async switchMany(ids: number[], toState: SwitchState, callbacks?: OperationCallbacks): Promise<ResultType<string>> {
         const uniqueIds = [...new Set(ids)]
         if (uniqueIds.length === 0)
             return Result.failed(FailureCode.ChannelNotFound, 'No channel ids provided')
@@ -129,18 +130,23 @@ export class EmpirBusChannelRepository implements IChannelRepository {
         if (unsupportedIds.length > 0)
             return Result.failed(FailureCode.Other, `Channels do not support switch semantics: ${unsupportedIds.join(', ')}`)
 
-        const momentaryUnknownStateIds = uniqueIds.filter((id, index) => channels[index]?.mfdType === 'momentary' && channels[index]?.onOffStatus === null)
-        if (momentaryUnknownStateIds.length > 0)
-            return Result.failed(FailureCode.Other, `Current state is not known for momentary channels: ${momentaryUnknownStateIds.join(', ')}`)
+        const unknownStateIds = uniqueIds.filter((id, index) => channels[index]?.onOffStatus === null)
+        if (unknownStateIds.length > 0)
+            return Result.failed(FailureCode.Other, `Current state is not known for channels: ${unknownStateIds.join(', ')}`)
 
         const on = this.normalizeSwitchState(toState)
+        const pending = uniqueIds
+            .map((id, index) => ({ channel: channels[index]!, id }))
+            .filter(({ channel }) => channel.onOffStatus !== on)
+
+        await callbacks?.onStart?.()
+
         const momentaryIds: number[] = []
 
-        uniqueIds.forEach((id, index) => {
-            const channel = channels[index]!
+        pending.forEach(({ channel, id }) => {
             if (channel.mfdType === 'pulse')
                 this.toggleCommand(id, true, on, !on)
-            else if (channel.onOffStatus !== on)
+            else
                 momentaryIds.push(id)
         })
 
@@ -213,11 +219,11 @@ export class EmpirBusChannelRepository implements IChannelRepository {
         )
     }
 
-    async toggle(id: number): Promise<ResultType<string>> {
-        return this.toggleMany([id])
+    async toggle(id: number, callbacks?: OperationCallbacks): Promise<ResultType<string>> {
+        return this.toggleMany([id], callbacks)
     }
 
-    async toggleMany(ids: number[]): Promise<ResultType<string>> {
+    async toggleMany(ids: number[], callbacks?: OperationCallbacks): Promise<ResultType<string>> {
         const uniqueIds = [...new Set(ids)]
         if (uniqueIds.length === 0)
             return Result.failed(FailureCode.ChannelNotFound, 'No channel ids provided')
@@ -226,13 +232,15 @@ export class EmpirBusChannelRepository implements IChannelRepository {
         if (missingIds.length > 0)
             return Result.failed(FailureCode.ChannelNotFound, `Channels not found: ${missingIds.join(', ')}`)
 
-        const unknownIds = uniqueIds.filter(id => this.getChannelById(id)?.rawValue === null)
+        const unknownIds = uniqueIds.filter(id => this.getChannelById(id)?.onOffStatus === null)
         if (unknownIds.length > 0)
             return Result.failed(FailureCode.Other, `Current state is not known for channels: ${unknownIds.join(', ')}`)
 
+        await callbacks?.onStart?.()
+
         uniqueIds.forEach(id => {
             const channel = this.getChannelById(id)!
-            const currentState = (channel.rawValue! & 1) !== 0
+            const currentState = channel.onOffStatus!
             this.toggleCommand(id, true, !currentState, currentState)
         })
 
